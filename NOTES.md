@@ -11,6 +11,8 @@ Shinny collector tag for sale. There are only 2 of this in the world rn.
 
 Minor auction 1hr flash sale.
 
+There will be a listing fee too.
+
 
 Can only auction bundles. e.g. 100 BEASTS - 10 Shinny, 3 T1s and 1 Rank 1 and 50 uniques.
 
@@ -31,3 +33,6 @@ One of the purest fully on-chain game in the world is built on Dojo engine.
 Add achievement system.
 
 BEAST Hunter book.
+
+
+Add auto-increment for `auction_id`. Users shouldn't set this.
