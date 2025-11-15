@@ -39,3 +39,6 @@ BEAST Hunter book.
 Add auto-increment for `auction_id`. Users shouldn't set this.
 
 https://claude.ai/share/e9c9f347-18e4-499f-bd99-b090f212becc
+
+
+If a beast is on the summit and the owner lists it, he get's 100 SURVIVOR?
