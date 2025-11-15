@@ -38,3 +38,5 @@ BEAST Hunter book.
 Add auto-increment for `auction_id`. Users shouldn't set this.
 
 https://claude.ai/share/e9c9f347-18e4-499f-bd99-b090f212becc
+
+Build Vaults for NFT custoday.
