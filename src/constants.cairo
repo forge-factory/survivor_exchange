@@ -1,6 +1,8 @@
 pub fn DEFAULT_NS() -> ByteArray {
-    "bm_0_0_1"
+    "bm_0_0_2"
 }
+
+pub const TEN_POW_18: u256 = 1000000000000000000;
 
 pub mod Errors {
     pub const AUCTION_NOT_ACTIVE: felt252 = 'Auction not active';
