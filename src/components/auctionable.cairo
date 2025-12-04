@@ -14,7 +14,6 @@ pub mod AuctionableComponent {
     use survivor_exchange::types::status::AuctionStatus;
     use survivor_exchange::utils::{BEAST_ADDRESS_MAINNET, SURVIVOR_ADDRESS_MAINNET};
 
-
     #[storage]
     pub struct Storage {}
 
@@ -30,16 +29,18 @@ pub mod AuctionableComponent {
             self: @ComponentState<TContractState>,
             world: WorldStorage,
             name: felt252,
-            starting_price: u8,
+            starting_price: u32,
             items: Span<u32>,
             collection: ContractAddress,
             duration: Option<u64>,
-        ) {
-            assert(items.len() >= 1 && items.len() <= 20, Errors::INVALID_ITEMS_COUNT);
+        ) -> u32 {
+            assert(items.len() >= 1 && items.len() <= 75, Errors::INVALID_ITEMS_COUNT);
 
             let mut store = StoreTrait::new(world);
             let seller = get_caller_address();
             let auction_id: u32 = store.world.dispatcher.uuid();
+
+            println!("Generated auction_id in create: {}", auction_id)
 
             let mut auction: Auction = AuctionTrait::new(name, starting_price, seller.into());
             auction.auction_id = auction_id;
@@ -66,6 +67,8 @@ pub mod AuctionableComponent {
             if let Option::Some(dur) = duration {
                 self.start_auction(world, auction_id, dur);
             }
+
+            auction_id
         }
 
         fn add_item(
@@ -101,6 +104,8 @@ pub mod AuctionableComponent {
             auction_id: u32,
             duration: u64,
         ) {
+            println!("Passed auction_id to start_auction: {}", auction_id)
+
             let mut store = StoreTrait::new(world);
             let mut auction = store.auction(auction_id);
 
@@ -108,8 +113,10 @@ pub mod AuctionableComponent {
             let current_time = get_block_timestamp();
             auction.activate(duration, current_time);
 
+            println!("Auction id at start_auction: {:?}", auction_id)
+
             let mut vault: Vault = VaultTrait::new(
-                auction.auction_id, 0, SURVIVOR_ADDRESS_MAINNET().into(), get_block_timestamp(),
+                auction_id, 0, SURVIVOR_ADDRESS_MAINNET().into(), get_block_timestamp(),
             );
             store.set_vault(@vault);
 
@@ -120,7 +127,7 @@ pub mod AuctionableComponent {
             self: @ComponentState<TContractState>,
             world: WorldStorage,
             auction_id: u32,
-            bid_amount: u8,
+            bid_amount: u32,
         ) {
             let mut store = StoreTrait::new(world);
             let current_time = get_block_timestamp();
@@ -128,6 +135,8 @@ pub mod AuctionableComponent {
 
             auction.assert_does_exist();
             let bidder = get_caller_address();
+
+            auction.assert_bidder_not_seller(bidder.into());
 
             let mut prev_bid = store.bid(auction_id, bidder.into());
             let prev_scaled = prev_bid.amount.into() * TEN_POW_18;
@@ -155,28 +164,26 @@ pub mod AuctionableComponent {
             let bidder = get_caller_address();
             let mut store = StoreTrait::new(world);
 
-            // Fetch entities
             let auction = store.auction(auction_id);
             assert(
                 auction.status == AuctionStatus::Active.into()
-                    || auction.end_time > get_block_timestamp(),
-                'unauthorized',
+                    || get_block_timestamp() < auction.end_time,
+                Errors::AUCTION_NOT_ACTIVE,
             );
 
             let mut bid = store.bid(auction_id, bidder.into());
-
             bid.assert_bid_amount_not_zero();
             bid.assert_is_bid_owner(bidder.into());
             bid.assert_not_highest_bidder(@auction);
 
-            // Refund from escrow
-            // TODO: Transfer bid.amount back to bidder
-            // E.g., let escrow_dispatcher = IERC20Dispatcher { contract_address: escrow_address };
-            // escrow_dispatcher.transfer(bidder, bid.amount.into());
+            // FIX: Refund via vault (bid.amount * 10^18 total deposited)
+            let scaled_amount = (bid.amount.into() * TEN_POW_18);
+            let (vault_token_address, _) = world.dns(@"vault_systems").unwrap();
+            let vault_dispatcher = IVaultDispatcher { contract_address: vault_token_address };
+            vault_dispatcher.withdraw(auction_id, bidder, scaled_amount); // to=bidder (default)
 
-            // Clear the bid
-            let mut cleared_bid = bid;
-            cleared_bid.amount = 0;
+            // Clear bid
+            let mut cleared_bid = BidTrait::new(auction_id, bidder.into(), 0);
             store.set_bid(@cleared_bid);
         }
 
