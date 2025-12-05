@@ -4,7 +4,7 @@ description = "The official Dojo Starter guide, the quickest and most streamline
 cover_uri = "file://assets/cover.png"
 icon_uri = "file://assets/icon.png"
 website = "https://github.com/dojoengine/dojo-starter"
-seed = "bm_0_0_7"
+seed = "bm_0_0_8"
 
 [world.socials]
 x = "https://x.com/ohayo_dojo"
@@ -13,7 +13,7 @@ github = "https://github.com/dojoengine/dojo-starter"
 telegram = "https://t.me/dojoengine"
 
 [namespace]
-default = "bm_0_0_7"
+default = "bm_0_0_8"
 
 [env]
 rpc_url = "https://api.cartridge.gg/x/starknet/mainnet"
@@ -23,4 +23,4 @@ private_key = "0x064ddb1260b4a1281c7c03cc2ee4ef5d836ed1f4424ed988dbba9bd7da531d6
 # world_address = "0x026d5777eccca1861a23303ee0ba48c0e8349e849d0377a21c3801ef1d0f8cef"
 
 [writers]
-"bm_0_0_7" = ["bm_0_0_7-auction_systems", "bm_0_0_7-admin_systems", "bm_0_0_7-vault_systems"]
+"bm_0_0_8" = ["bm_0_0_8-auction_systems", "bm_0_0_8-admin_systems", "bm_0_0_8-vault_systems"]
