@@ -212,40 +212,68 @@ pub mod AuctionableComponent {
 
         fn settle(self: @ComponentState<TContractState>, world: WorldStorage, auction_id: u32) {
             let mut store = StoreTrait::new(world);
+            let current_time = get_block_timestamp();
             let mut auction = store.auction(auction_id);
             let status = auction.status;
 
-            // Assert auction exists and is ended (not active or settled)
+            // Assert auction exists and is not already settled
             auction.assert_does_exist();
-            assert(status == AuctionStatus::Ended.into(), Errors::AUCTION_NOT_ENDED);
+            assert(status != AuctionStatus::Settled.into(), Errors::AUCTION_ALREADY_SETTLED);
 
-            //let winner = auction.highest_bidder;
-            //let seller = auction.seller;
-            //let has_winner = winner != 0_felt252; // Assuming 0 means no bids
-            //let beast_dispatcher = IERC721Dispatcher { contract_address: BEAST_ADDRESS_MAINNET()
-            //};
+            // Auto-end if active and expired (mimics end() logic for post-expiry)
+            if status == AuctionStatus::Active.into() {
+                assert(
+                    current_time >= auction.end_time, Errors::AUCTION_NOT_ENDED,
+                ); // Revert if not expired
+                // TODO: Check no active rentals on items before ending/settling
 
-            // Transfer items (loop over auction items; assumes you can fetch via
-            // store.auction_items(auction_id))
-            // TODO: Implement item iteration (e.g., for i in 0..auction.item_count { let item =
-            // store.auction_item(auction_id, i); ... })
-            // For each item:
-            // if has_winner {
-            //     beast_dispatcher.transfer_from(self.marketplace_address(), winner,
-            //     item.token_id.into());  // Escrow -> winner
-            // } else {
-            //     beast_dispatcher.transfer_from(self.marketplace_address(), owner,
-            //     item.token_id.into());  // Back to owner
-            // }
+                auction.status = AuctionStatus::Ended.into();
+                store.set_auction(@auction); // Persist the Ended status
+                // TODO: Emit AuctionEnded event (auction_id, end_time)
+            // world.emit_event(AuctionEnded { auction_id, end_time: auction.end_time });
+            } else {
+                // If not Active, must already be Ended
+                assert(status == AuctionStatus::Ended.into(), Errors::AUCTION_NOT_ENDED);
+            }
 
-            // Transfer funds to owner (stub: current_bid as u8; real: ERC20 transfer)
-            // TODO: E.g., eth_dispatcher.transfer(owner, auction.current_bid.into());
-            // If no winner, refund last bidder if needed (but usually not)
+            // Reload auction after potential update (in case of external changes, but unlikely)
+            auction = store.auction(auction_id);
+
+            let winner: ContractAddress = auction.highest_bidder.try_into().unwrap();
+            let seller: ContractAddress = auction.seller.try_into().unwrap();
+            let zero_address: ContractAddress = 0.try_into().unwrap();
+            let has_winner = winner != zero_address;
+            let (vault_system_address, _) = world.dns(@"vault_systems").unwrap();
+            let vault_dispatcher = IVaultDispatcher { contract_address: vault_system_address };
+
+            if has_winner {
+                // Withdraw funds to seller via disbursement
+                let amount = auction.current_bid.into();
+
+                // Check no active rentals on items before transferring (if not already checked
+                // above)
+                // Note: If rentals checked in auto-end, skip here to avoid double-check; otherwise,
+                // add it
+
+                // Transfer items to winner
+                let mut i: u32 = 0;
+                while i < auction.item_count {
+                    let item = store.auction_item(auction.auction_id, i);
+                    let item_dispatcher = IERC721Dispatcher {
+                        contract_address: item.contract_address.try_into().unwrap(),
+                    };
+                    item_dispatcher.transfer_from(seller, winner, item.token_id.into());
+                    i += 1;
+                }
+
+                vault_dispatcher.disburse_to_seller(auction.auction_id, seller, amount);
+            }
+            // If no winner, items stay with seller; no fund transfer (vault should be empty or
+            // withdrawable separately)
 
             // Update to Settled
             auction.status = AuctionStatus::Settled.into();
             store.set_auction(@auction);
-            // TODO: Emit AuctionSettled event (auction_id, winner, final_price)
         }
     }
 }
