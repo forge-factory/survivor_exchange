@@ -4,10 +4,12 @@ pub mod AuctionableComponent {
     use openzeppelin_token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
     use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
     use survivor_exchange::constants::Errors;
+    use survivor_exchange::interfaces::ierc2981::{IERC2981Dispatcher, IERC2981DispatcherTrait};
     use survivor_exchange::models::auction::{
         Auction, AuctionAssert, AuctionItemTrait, AuctionTrait,
     };
     use survivor_exchange::models::bid::{AssertTrait, BidAssert, BidTrait};
+    use survivor_exchange::models::index::{AuctionItem, ListedToken};
     use survivor_exchange::models::vault::{Vault, VaultTrait};
     use survivor_exchange::store::StoreTrait;
     use survivor_exchange::systems::vault::{IVaultDispatcher, IVaultDispatcherTrait};
@@ -86,10 +88,10 @@ pub mod AuctionableComponent {
                     Errors::NOT_BEAST_OWNER,
                 );
 
-                // TODO: Rentals check (if Rental component exists)
-                // let rental = store.rental(token_id);
-                // rental.assert_not_active();
+                let listed_token = store.listed_token(collection.into(), token_id);
+                assert(listed_token.auction_id == 0, Errors::TOKEN_ALREADY_LISTED);
 
+                // TODO: Rentals check
                 // TODO: Approve exchange as spender for each beast (call set_approval_for_all if
                 // not already)
                 // let exchange_address = get_contract_address();  // Or fetch from config
@@ -103,7 +105,7 @@ pub mod AuctionableComponent {
             i = 0;
             while i < token_ids.len() {
                 let token_id = *token_ids[i];
-                let auction_item = AuctionItemTrait::new_item(
+                let auction_item: AuctionItem = AuctionItemTrait::new_item(
                     auction_id, item_index, token_id, collection.into(),
                 );
                 store.set_auction_item(@auction_item);
@@ -111,7 +113,16 @@ pub mod AuctionableComponent {
                 i += 1;
             }
 
-            // Update auction once
+            // List tokens
+            let mut i: usize = 0;
+            while i < token_ids.len() {
+                let token_id = *token_ids[i];
+                let listed_token = ListedToken {
+                    contract_address: collection.into(), token_id, auction_id,
+                };
+                store.set_listed_token(@listed_token);
+                i += 1;
+            }
             auction.item_count = item_index;
             store.set_auction(@auction);
         }
@@ -179,7 +190,10 @@ pub mod AuctionableComponent {
             // Final bid validation
             auction_ref.assert_bid_not_low(new_total_bid);
 
-            // Deposit the diff to vault
+            // Capture previous highest bidder **before** changes
+            let prev_highest_felt = auction.highest_bidder;
+
+            // Deposit the diff to vault **first**
             let diff = deposit_diff.into();
             let (vault_token_address, _) = world.dns(@"vault_systems").unwrap();
             let vault_dispatcher = IVaultDispatcher { contract_address: vault_token_address };
@@ -189,10 +203,25 @@ pub mod AuctionableComponent {
             let mut bid = BidTrait::new(auction_id, bidder_felt, new_total_bid);
             store.set_bid(@bid);
 
-            // Update auction (asserts already validated)
+            // Update auction (now reflects new highest bidder/current_bid)
             auction.update_bid(bidder_felt, new_total_bid, current_time);
             store.bid_placed(@auction, @bid, get_block_timestamp());
             store.set_auction(@auction);
+
+            // **Now** refund previous highest bidder (vault will see updated auction)
+            if prev_highest_felt != 0 && !is_highest_bidder {
+                let prev_highest = prev_highest_felt.try_into().unwrap();
+                let prev_share_balance = vault_dispatcher
+                    .share_balance(auction.auction_id, prev_highest);
+                if prev_share_balance > 0_u256 {
+                    vault_dispatcher
+                        .withdraw(
+                            auction.auction_id, prev_highest, prev_highest, prev_share_balance,
+                        );
+                    let mut cleared_bid = BidTrait::new(auction_id, prev_highest_felt, 0_u64);
+                    store.set_bid(@cleared_bid);
+                }
+            }
         }
 
         fn withdraw_bid(
@@ -262,6 +291,7 @@ pub mod AuctionableComponent {
             // Assert auction exists and is not already settled
             auction.assert_does_exist();
             assert(status != AuctionStatus::Settled.into(), Errors::AUCTION_ALREADY_SETTLED);
+            assert(status != AuctionStatus::Canceled.into(), Errors::AUCTION_ALREADY_CANCELED);
 
             // Auto-end if active and expired (mimics end() logic for post-expiry)
             if status == AuctionStatus::Active.into() {
@@ -274,44 +304,162 @@ pub mod AuctionableComponent {
                 assert(status == AuctionStatus::Ended.into(), Errors::AUCTION_NOT_ENDED);
             }
 
-            // Reload auction after potential update (in case of external changes, but unlikely)
+            // Reload auction after potential update
             auction = store.auction(auction_id);
 
             let winner: ContractAddress = auction.highest_bidder.try_into().unwrap();
             let seller: ContractAddress = auction.seller.try_into().unwrap();
+            let auction_contract: ContractAddress = starknet::get_contract_address();
             let zero_address: ContractAddress = 0.try_into().unwrap();
             let has_winner = winner != zero_address;
             let (vault_system_address, _) = world.dns(@"vault_systems").unwrap();
             let vault_dispatcher = IVaultDispatcher { contract_address: vault_system_address };
 
+            let mut can_settle: bool = true;
             if has_winner {
-                // Withdraw funds to seller via disbursement
-                let amount = auction.current_bid.into();
-
-                // Check no active rentals on items before transferring (if not already checked
-                // above)
-                // Note: If rentals checked in auto-end, skip here to avoid double-check; otherwise,
-                // add it
-
-                // Transfer items to winner
+                // Pre-flight: check all items transferable
                 let mut i: u32 = 0;
                 while i < auction.item_count {
                     let item = store.auction_item(auction.auction_id, i);
-                    let item_dispatcher = IERC721Dispatcher {
+                    let nft_dispatcher = IERC721Dispatcher {
                         contract_address: item.contract_address.try_into().unwrap(),
                     };
-                    item_dispatcher.transfer_from(seller, winner, item.token_id.into());
+                    let owner = nft_dispatcher.owner_of(item.token_id.into());
+                    if owner != seller {
+                        can_settle = false;
+                        break;
+                    }
+                    let approved = nft_dispatcher.get_approved(item.token_id.into());
+                    let approved_for_all = nft_dispatcher
+                        .is_approved_for_all(seller, auction_contract);
+                    if !(approved == auction_contract || approved_for_all) {
+                        can_settle = false;
+                        break;
+                    }
                     i += 1;
                 }
 
-                vault_dispatcher.disburse_to_seller(auction.auction_id, seller, amount);
+                if can_settle {
+                    // Withdraw funds to seller via disbursement
+                    let amount = auction.current_bid.into();
+
+                    // Calculate royalty using sample item from the auction
+                    let sample_item = store.auction_item(auction.auction_id, 0);
+                    let royalty_dispatcher = IERC2981Dispatcher {
+                        contract_address: sample_item.contract_address.try_into().unwrap(),
+                    };
+                    let (royalty_receiver, royalty_amount) = royalty_dispatcher
+                        .royalty_info(sample_item.token_id.into(), amount);
+                    let net_amount = if royalty_amount != 0 {
+                        // Pay royalty via vault
+                        // Pay royalty via vault (vault_id: auction.auction_id, to:
+                        // royalty_receiver, amount: royalty_amount)
+                        vault_dispatcher
+                            .pay_royalty(auction.auction_id, royalty_receiver, royalty_amount);
+                        amount - royalty_amount
+                    } else {
+                        amount
+                    };
+
+                    // TODO: Check no active rentals on items (cross-check rentable)
+
+                    // Transfer items to winner
+                    let mut i: u32 = 0;
+                    while i < auction.item_count {
+                        let item = store.auction_item(auction.auction_id, i);
+                        let item_dispatcher = IERC721Dispatcher {
+                            contract_address: item.contract_address.try_into().unwrap(),
+                        };
+                        item_dispatcher.transfer_from(seller, winner, item.token_id.into());
+                        i += 1;
+                    }
+
+                    vault_dispatcher.disburse_to_seller(auction.auction_id, seller, net_amount);
+                } else {
+                    // Refund highest bidder (auction_systems authorized)
+                    let shares = vault_dispatcher.share_balance(auction.auction_id, winner);
+                    if shares > 0_u256 {
+                        vault_dispatcher.withdraw(auction.auction_id, winner, winner, shares);
+                    }
+                }
             }
             // If no winner, items stay with seller; no fund transfer (vault should be empty or
-            // withdrawable separately)
+            // withdrawable)
 
-            // Update to Settled
-            auction.status = AuctionStatus::Settled.into();
+            // Delist all items
+            let mut i: u32 = 0;
+            while i < auction.item_count {
+                let item = store.auction_item(auction.auction_id, i);
+                let mut listed_token = store.listed_token(item.contract_address, item.token_id);
+                listed_token.auction_id = 0_u32;
+                store.set_listed_token(@listed_token);
+                i += 1;
+            }
+
+            // Update to Settled or Canceled
+            auction
+                .status =
+                    if can_settle {
+                        AuctionStatus::Settled.into()
+                    } else {
+                        AuctionStatus::Canceled.into()
+                    };
             store.set_auction(@auction);
+        }
+
+        /// View: Whether `settle` would succeed now (items transferable + expired).
+        /// Simulates auto-end: `true` for expired Active + checks pass.
+        fn can_settle(
+            self: @ComponentState<TContractState>, world: WorldStorage, auction_id: u32,
+        ) -> bool {
+            let store = StoreTrait::new(world);
+            let current_time = get_block_timestamp();
+            let auction = store.auction(auction_id);
+            let status = auction.status;
+
+            // Mimic settle asserts (exists + !Settled/!Canceled)
+            if status == AuctionStatus::None.into()
+                || status == AuctionStatus::Settled.into()
+                || status == AuctionStatus::Canceled.into() {
+                return false;
+            }
+
+            // Auto-end sim (settle prefix)
+            let is_ended = if status == AuctionStatus::Active.into() {
+                current_time >= auction.end_time
+            } else {
+                status == AuctionStatus::Ended.into()
+            };
+            if !is_ended {
+                return false;
+            }
+
+            let seller: ContractAddress = auction.seller.try_into().unwrap();
+            let auction_contract: ContractAddress = starknet::get_contract_address();
+            let has_winner = auction.highest_bidder != 0; // felt252 zero-check
+            if !has_winner {
+                return true; // Settle noop (no transfer)
+            }
+
+            // Full pre-flight: owner + approvals (fails on rug/revoke)
+            let mut i: u32 = 0;
+            while i < auction.item_count {
+                let item = store.auction_item(auction_id, i);
+                let nft_dispatcher = IERC721Dispatcher {
+                    contract_address: item.contract_address.try_into().unwrap(),
+                };
+                let owner = nft_dispatcher.owner_of(item.token_id.into());
+                if owner != seller { // Rug: transferred away
+                    return false;
+                }
+                let approved = nft_dispatcher.get_approved(item.token_id.into());
+                let approved_for_all = nft_dispatcher.is_approved_for_all(seller, auction_contract);
+                if !(approved == auction_contract || approved_for_all) {
+                    return false;
+                }
+                i += 1;
+            }
+            true
         }
     }
 }
