@@ -9,9 +9,9 @@ export const MAINNET_RPC_URL = "https://api.cartridge.gg/x/starknet/mainnet";
 export const SEPOLIA_RPC_URL = "https://api.cartridge.gg/x/starknet/sepolia";
 
 export const AUCTION_CONTRACT_ADDRESS =
-  "0x04604ef40c66d0a7e0ba00f323f21e4c485c48eef1daf2bee0d1be0e602eac13";
+  "0x02dfedce0383bfd4b5a5dbf2693220841aaa3a1ebf639919a76dbe09a5ff41cb";
 export const VAULT_CONTRACT_ADDRESS =
-  "0x063ce099c649eba7ae064ab5228494389760ef4513b3c803cad425d0e5ad0fee";
+  "0x02aa15e266a17d519301d5e658562ae8fe5a483be47660be42e67588b9ac29cd";
 export const BEASTS_NFT_CONTRACT_ADDRESS =
   "0x046da8955829adf2bda310099a0063451923f02e648cf25a1203aac6335cf0e4";
 
