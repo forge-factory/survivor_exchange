@@ -7,6 +7,7 @@ import Filters, { FilterState } from "./filters";
 import BidPriceChart from "./bid-price-chart";
 import BidsSkeleton from "./bids-skeleton";
 import CustomDropdown from "./custom-dropdown";
+import InfoTooltip from "./info-tooltip";
 import type { AuctionItem } from "../lib/types";
 import { AuctionWithNFTs } from "../hooks/use-auctions";
 import { uint256 } from "starknet";
@@ -120,6 +121,17 @@ export default function Bids({
   const [isSettling, setIsSettling] = useState(false);
   const [settleTxnHash, setSettleTxnHash] = useState<string | undefined>();
   const [isRefunded, setIsRefunded] = useState(false);
+  const [isSubmittingOffer, setIsSubmittingOffer] = useState(false);
+  const [offerTxnHash, setOfferTxnHash] = useState<string | undefined>();
+  const [userOffer, setUserOffer] = useState<{
+    buyer: string;
+    amount: number;
+    status: string;
+    createdAt: string;
+    expiresAt: string;
+  } | null>(null);
+  const [isWithdrawingOffer, setIsWithdrawingOffer] = useState(false);
+  const [withdrawOfferTxnHash, setWithdrawOfferTxnHash] = useState("");
   const [filters, setFilters] = useState<FilterState>({
     id: "",
     search: "",
@@ -345,7 +357,7 @@ export default function Bids({
 
       if (!isRetry && !shouldRefetchPrice(paymentToken)) {
         try {
-          const cachedPrice = await getTokenPriceInUSDC(paymentToken);
+          const cachedPrice = await getTokenPriceInUSDC(paymentToken, address);
           if (isValidPrice(cachedPrice)) {
             setTokenPrice(cachedPrice);
             setIsConvertingPrices(false);
@@ -363,7 +375,7 @@ export default function Bids({
       }
 
       try {
-        const price = await getTokenPriceInUSDC(paymentToken);
+        const price = await getTokenPriceInUSDC(paymentToken, address);
         if (isValidPrice(price)) {
           setTokenPrice(price);
           setIsConvertingPrices(false);
@@ -417,6 +429,57 @@ export default function Bids({
     setConvertedHighestBid(selectedCollection.highestBid);
   }, [selectedCollection]);
 
+  // Fetch user's pending offer for the selected auction
+  useEffect(() => {
+    // Check explicitly for empty string, null, or undefined (not just falsy, since "0" is valid)
+    if (selectedCollectionId === "" || selectedCollectionId === null || selectedCollectionId === undefined || !address) {
+      setUserOffer(null);
+      return;
+    }
+
+    // Convert to string for comparison in case it's a number
+    const collectionIdStr = String(selectedCollectionId);
+    const auction = paginatedFilteredAuctions.find(
+      (a) => String(a.auction_id) === collectionIdStr,
+    );
+
+    if (!auction || !auction.offers) {
+      setUserOffer(null);
+      return;
+    }
+
+    // Find user's pending offer
+    // Note: offersByAuction already filters to status === 1, so we only need to check address
+    const normalizedUserAddress = address ? normalizeContractAddress(address).toLowerCase() : "";
+    const usersPendingOffer = auction.offers.find((offer) => {
+      // Normalize both addresses for comparison
+      const normalizedOfferBuyer = normalizeContractAddress(offer.buyer).toLowerCase();
+      const addressMatch = normalizedOfferBuyer === normalizedUserAddress;
+      return addressMatch;
+    });
+
+    if (usersPendingOffer) {
+      // Parse amount - handle both hex strings and decimal strings
+      let amountValue: number;
+      const amountStr = String(usersPendingOffer.amount);
+      if (amountStr.startsWith("0x") || amountStr.startsWith("0X")) {
+        amountValue = parseInt(amountStr, 16) / 1e6;
+      } else {
+        amountValue = parseFloat(amountStr) / 1e6;
+      }
+
+      setUserOffer({
+        buyer: usersPendingOffer.buyer,
+        amount: amountValue,
+        status: usersPendingOffer.status,
+        createdAt: usersPendingOffer.created_at || "",
+        expiresAt: usersPendingOffer.expires_at || "",
+      });
+    } else {
+      setUserOffer(null);
+    }
+  }, [selectedCollectionId, address, paginatedFilteredAuctions]);
+
   // Fetch token balances with USD values
   useEffect(() => {
     if (!address || !provider) {
@@ -463,10 +526,13 @@ export default function Bids({
                   usdValue = formatUSD(balanceDecimal);
                 } else {
                   if (balanceDecimal > 0) {
-                    const price = await getTokenPriceInUSDC(token.address);
+                    const price = await getTokenPriceInUSDC(token.address, address);
                     if (price && isValidPrice(price)) {
                       const usdAmount = balanceDecimal * price;
                       usdValue = formatUSD(usdAmount);
+                    } else {
+                      // Price fetch succeeded but price is invalid - show $0.00 as fallback
+                      usdValue = formatUSD(0);
                     }
                   } else {
                     // Even for 0 balance, show $0.00
@@ -478,10 +544,9 @@ export default function Bids({
                   `Error fetching USD value for ${token.symbol}:`,
                   error,
                 );
-                // If error but balance is 0, still show $0.00
-                if (balanceDecimal === 0) {
-                  usdValue = formatUSD(0);
-                }
+                // Always show $0.00 on error, regardless of balance
+                // This ensures the token still appears in the dropdown even if price fetch fails
+                usdValue = formatUSD(0);
               }
 
               balances[token.address] = {
@@ -680,7 +745,7 @@ export default function Bids({
         // Get fresh price if needed
         let currentTokenPrice = tokenPrice;
         if (shouldRefetchPrice(paymentToken)) {
-          currentTokenPrice = await getTokenPriceInUSDC(paymentToken);
+          currentTokenPrice = await getTokenPriceInUSDC(paymentToken, address);
           setTokenPrice(currentTokenPrice);
         }
 
@@ -908,6 +973,323 @@ export default function Bids({
     isValidPrice,
     selectedCollection,
   ]);
+
+  const handleMakeOffer = useCallback(async () => {
+    if (
+      !account ||
+      !address ||
+      selectedCollectionId === "" ||
+      selectedCollectionId === null ||
+      selectedCollectionId === undefined ||
+      !isBidValid
+    ) {
+      return;
+    }
+
+    // If paying with non-USDC token, we need token price
+    if (
+      paymentToken.toLowerCase() !== USDC_ADDRESS.toLowerCase() &&
+      (tokenPrice === null || !isValidPrice(tokenPrice))
+    ) {
+      return;
+    }
+
+    setInsufficientFundsError(null);
+
+    try {
+      setIsSubmittingOffer(true);
+
+      const auctionId = parseInt(selectedCollectionId, 10);
+      const usdcAmount = parseFloat(bidAmountToken);
+      if (isNaN(usdcAmount) || usdcAmount <= 0) {
+        throw new Error("Invalid offer amount");
+      }
+
+      const finalUSDAmount = Math.floor(usdcAmount * 1e6);
+
+      const calls: Array<{
+        contractAddress: string;
+        entrypoint: string;
+        calldata: string[];
+      }> = [];
+
+      // If paying with a token other than USDC, we need to swap
+      if (paymentToken.toLowerCase() !== USDC_ADDRESS.toLowerCase()) {
+        const paymentTokenInfo = SUPPORTED_TOKENS.find(
+          (t) => t.address.toLowerCase() === paymentToken.toLowerCase(),
+        );
+        if (!paymentTokenInfo) {
+          throw new Error("Invalid payment token");
+        }
+
+        // Get fresh price if needed
+        let currentTokenPrice = tokenPrice;
+        if (shouldRefetchPrice(paymentToken)) {
+          currentTokenPrice = await getTokenPriceInUSDC(paymentToken, address);
+          setTokenPrice(currentTokenPrice);
+        }
+
+        if (currentTokenPrice === null || !isValidPrice(currentTokenPrice)) {
+          throw new Error("Unable to get token price");
+        }
+
+        // Calculate how much of the payment token we need
+        const tokenAmountNeeded = usdcAmount / currentTokenPrice;
+        const tokenAmountWei = BigInt(
+          Math.floor(
+            tokenAmountNeeded * Math.pow(10, paymentTokenInfo.decimals),
+          ),
+        );
+
+        // Check balance of payment token
+        const balanceResult = await provider.provider.callContract({
+          contractAddress: paymentToken,
+          entrypoint: "balanceOf",
+          calldata: [address],
+        });
+
+        if (!balanceResult || balanceResult.length < 2) {
+          throw new Error("Invalid balance response");
+        }
+
+        const low = balanceResult[0];
+        const high = balanceResult[1];
+        const balance = BigInt(low) + (BigInt(high) << BigInt(128));
+
+        // Check balance with a 2% buffer to account for swap needs
+        const balanceWithBuffer = (tokenAmountWei * 102n) / 100n;
+        if (balance < balanceWithBuffer) {
+          setInsufficientFundsError(`Insufficient funds to make offer.`);
+          setIsSubmittingOffer(false);
+          return;
+        }
+
+        // Calculate token amount needed for swap
+        const tokenAmountNeededForSwap = usdcAmount / currentTokenPrice;
+        const tokenAmountWeiForSwap = BigInt(
+          Math.floor(
+            tokenAmountNeededForSwap * Math.pow(10, paymentTokenInfo.decimals),
+          ),
+        );
+
+        // Get Avnu swap quotes
+        const quotes = await getQuotes({
+          sellTokenAddress: paymentToken,
+          buyTokenAddress: USDC_ADDRESS,
+          sellAmount: tokenAmountWeiForSwap,
+          takerAddress: address,
+        });
+
+        if (!quotes || quotes.length === 0) {
+          throw new Error("No swap quotes available");
+        }
+
+        const bestQuote = quotes[0];
+
+        // Build the execute transaction calls from the quote
+        const slippage = 0.01; // 1% slippage
+        const swapCallsResult = await quoteToCalls({
+          quoteId: bestQuote.quoteId,
+          slippage: slippage,
+        });
+
+        // Avnu SDK returns an object with a 'calls' array
+        const allSwapCalls =
+          swapCallsResult.calls ||
+          (Array.isArray(swapCallsResult)
+            ? swapCallsResult
+            : [swapCallsResult]);
+
+        // Filter out approve calls (we'll add our own)
+        const swapCalls = allSwapCalls.filter((call) => {
+          return call.entrypoint !== "approve";
+        });
+
+        if (swapCalls.length === 0) {
+          console.error(
+            "No swap calls found after filtering. All calls:",
+            allSwapCalls,
+          );
+          throw new Error("No swap calls available from quote");
+        }
+
+        // Use the actual sellAmount from the quote, and add 2% buffer for safety
+        const actualSellAmount = bestQuote.sellAmount;
+        const paymentTokenApprovalAmount = (actualSellAmount * 102n) / 100n;
+        const paymentTokenApproval = uint256.bnToUint256(
+          paymentTokenApprovalAmount,
+        );
+
+        // Get the router address from the first swap call
+        const routerAddress = swapCalls[0]?.contractAddress;
+        if (!routerAddress) {
+          console.error("Swap calls structure:", swapCalls);
+          throw new Error(
+            `Unable to determine router address from swap calls. First call: ${JSON.stringify(swapCalls[0])}`,
+          );
+        }
+
+        calls.push({
+          contractAddress: paymentToken,
+          entrypoint: "approve",
+          calldata: [
+            routerAddress,
+            paymentTokenApproval.low.toString(),
+            paymentTokenApproval.high.toString(),
+          ],
+        });
+
+        // Add the swap transaction calls
+        swapCalls.forEach((call) => {
+          const calldataArray = Array.isArray(call.calldata)
+            ? call.calldata.map((arg) =>
+                typeof arg === "string" ? arg : String(arg),
+              )
+            : [];
+
+          calls.push({
+            contractAddress: call.contractAddress,
+            entrypoint: call.entrypoint,
+            calldata: calldataArray,
+          });
+        });
+
+        // Calculate the minimum USDC amount we'll receive after swap
+        let buyAmount: bigint;
+        if (typeof bestQuote.buyAmount === "bigint") {
+          buyAmount = bestQuote.buyAmount;
+        } else if (typeof bestQuote.buyAmount === "string") {
+          buyAmount = BigInt(bestQuote.buyAmount);
+        } else {
+          buyAmount = BigInt(Math.floor(Number(bestQuote.buyAmount)));
+        }
+        const minBuyAmount =
+          (buyAmount * BigInt(Math.floor((1 - slippage) * 10000))) / 10000n;
+
+        // Approve USDC to vault with minimum amount from swap
+        const usdcApprovalAmount = minBuyAmount;
+        const usdcApproval = uint256.bnToUint256(usdcApprovalAmount);
+        calls.push({
+          contractAddress: USDC_ADDRESS,
+          entrypoint: "approve",
+          calldata: [
+            VAULT_CONTRACT_ADDRESS,
+            usdcApproval.low.toString(),
+            usdcApproval.high.toString(),
+          ],
+        });
+
+        // Make offer with minimum amount from swap
+        const TEN_YEARS_IN_SECONDS = 10 * 365 * 24 * 60 * 60;
+        calls.push({
+          contractAddress: AUCTION_CONTRACT_ADDRESS,
+          entrypoint: "make_offer",
+          calldata: [
+            auctionId.toString(),
+            minBuyAmount.toString(),
+            "0",
+            TEN_YEARS_IN_SECONDS.toString(),
+          ],
+        });
+      } else {
+        // Paying with USDC directly - check USDC balance
+        const usdcBalanceResult = await provider.provider.callContract({
+          contractAddress: USDC_ADDRESS,
+          entrypoint: "balanceOf",
+          calldata: [address],
+        });
+
+        if (!usdcBalanceResult || usdcBalanceResult.length < 2) {
+          throw new Error("Invalid balance response");
+        }
+
+        const usdcLow = usdcBalanceResult[0];
+        const usdcHigh = usdcBalanceResult[1];
+        const usdcBalance = BigInt(usdcLow) + (BigInt(usdcHigh) << BigInt(128));
+
+        if (usdcBalance < BigInt(finalUSDAmount)) {
+          setInsufficientFundsError(`Insufficient funds to make offer.`);
+          setIsSubmittingOffer(false);
+          return;
+        }
+
+        // Approve USDC for vault
+        const approvalAmountValue = (BigInt(finalUSDAmount) * 102n) / 100n;
+        const approvalAmount = uint256.bnToUint256(approvalAmountValue);
+        calls.push({
+          contractAddress: USDC_ADDRESS,
+          entrypoint: "approve",
+          calldata: [
+            VAULT_CONTRACT_ADDRESS,
+            approvalAmount.low.toString(),
+            approvalAmount.high.toString(),
+          ],
+        });
+
+        // Make offer
+        const TEN_YEARS_IN_SECONDS = 10 * 365 * 24 * 60 * 60;
+        calls.push({
+          contractAddress: AUCTION_CONTRACT_ADDRESS,
+          entrypoint: "make_offer",
+          calldata: [
+            auctionId.toString(),
+            finalUSDAmount.toString(),
+            "0",
+            TEN_YEARS_IN_SECONDS.toString(),
+          ],
+        });
+      }
+
+      const response = await account.execute(calls);
+      setOfferTxnHash(response.transaction_hash);
+      setBidAmountToken("");
+    } catch (err) {
+      console.error("Error making offer:", err);
+      if (err instanceof Error && err.message.includes("balance")) {
+        setInsufficientFundsError("Insufficient funds");
+      }
+    } finally {
+      setIsSubmittingOffer(false);
+    }
+  }, [
+    account,
+    address,
+    selectedCollectionId,
+    bidAmountToken,
+    isBidValid,
+    provider,
+    paymentToken,
+    tokenPrice,
+    isValidPrice,
+  ]);
+
+  const handleWithdrawOffer = useCallback(async () => {
+    if (!account || !selectedCollectionId || !userOffer) {
+      return;
+    }
+
+    try {
+      setIsWithdrawingOffer(true);
+      setWithdrawOfferTxnHash("");
+
+      const auctionId = parseInt(selectedCollectionId, 10);
+
+      const calls = [
+        {
+          contractAddress: AUCTION_CONTRACT_ADDRESS,
+          entrypoint: "withdraw_offer",
+          calldata: [auctionId.toString()],
+        },
+      ];
+
+      const response = await account.execute(calls);
+      setWithdrawOfferTxnHash(response.transaction_hash);
+    } catch (error) {
+      console.error("Error withdrawing offer:", error);
+    } finally {
+      setIsWithdrawingOffer(false);
+    }
+  }, [account, selectedCollectionId, userOffer]);
 
   const isAuctionExpired = useCallback(
     (endTime: string, status: string): boolean => {
@@ -1172,6 +1554,7 @@ export default function Bids({
     setSelectedCollectionId(collection.id);
     setBidAmountToken("");
     setTxnHash(undefined);
+    setOfferTxnHash(undefined);
     setSettleTxnHash(undefined);
     setInsufficientFundsError(null);
     setIsRefunded(false);
@@ -1183,6 +1566,7 @@ export default function Bids({
         setSelectedCollectionId("");
         setBidAmountToken("");
         setTxnHash(undefined);
+        setOfferTxnHash(undefined);
         setSettleTxnHash(undefined);
         setInsufficientFundsError(null);
       } else {
@@ -1679,18 +2063,59 @@ export default function Bids({
                   </div>
                 </div>
 
-                <div className="w-full rounded-xl border border-[rgb(50,255,52)]/20 bg-[rgb(50,255,52)]/5 px-3 md:px-4 py-3 md:py-4 overflow-x-auto">
-                  <p className="text-[rgb(186,255,188)]/70 text-[10px] md:text-[11px] font-orbitron uppercase tracking-[0.16em] mb-3">
-                    Live Price Chart
-                  </p>
-                  <div className="min-w-[300px]">
-                    <BidPriceChart
-                      width={400}
-                      height={120}
-                      startingPrice={selectedCollection.startingPrice / 1e6}
-                      currentBid={selectedCollection.highestBid}
-                      bids={auction?.bids}
-                    />
+                <div className="w-full rounded-xl border border-[rgb(50,255,52)]/20 bg-[rgb(50,255,52)]/5 px-3 md:px-4 py-3 md:py-4">
+                  <div className="flex flex-col md:flex-row gap-4">
+                    <div className="flex-1 overflow-x-auto">
+                      <p className="text-[rgb(186,255,188)]/70 text-[10px] md:text-[11px] font-orbitron uppercase tracking-[0.16em] mb-3">
+                        Live Price Chart
+                      </p>
+                      <div className="min-w-[300px]">
+                        <BidPriceChart
+                          width={400}
+                          height={120}
+                          startingPrice={selectedCollection.startingPrice / 1e6}
+                          currentBid={selectedCollection.highestBid}
+                          bids={auction?.bids}
+                        />
+                      </div>
+                    </div>
+                    <div className="md:w-48 lg:w-56 flex-shrink-0">
+                      <p className="text-[rgb(186,255,188)]/70 text-[10px] md:text-[11px] font-orbitron uppercase tracking-[0.16em] mb-3">
+                        Latest Bids
+                      </p>
+                      {auction?.bids && auction.bids.length > 0 ? (
+                        <div className="flex flex-col gap-2">
+                          {auction.bids
+                            .slice()
+                            .sort((a, b) => {
+                              const amountA = a.amount.startsWith('0x') ? parseInt(a.amount, 16) : parseFloat(a.amount);
+                              const amountB = b.amount.startsWith('0x') ? parseInt(b.amount, 16) : parseFloat(b.amount);
+                              return amountB - amountA;
+                            })
+                            .slice(0, 5)
+                            .map((bid, index) => {
+                              const bidAmount = bid.amount.startsWith('0x') || bid.amount.startsWith('0X')
+                                ? parseInt(bid.amount, 16) / 1e6
+                                : parseFloat(bid.amount) / 1e6;
+                              return (
+                                <div
+                                  key={`${bid.bidder}-${bid.amount}-${index}`}
+                                  className="flex items-center justify-between py-1.5 px-2 rounded-lg bg-black/30"
+                                >
+                                  <span className="text-[10px] text-[rgb(186,255,188)]/60 truncate max-w-[80px]">
+                                    {truncateAddress(bid.bidder)}
+                                  </span>
+                                  <span className="text-[11px] font-medium text-white">
+                                    {formatUSDSmart(bidAmount)}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                        </div>
+                      ) : (
+                        <p className="text-[10px] text-[rgb(186,255,188)]/50">No bids yet</p>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1815,7 +2240,7 @@ export default function Bids({
                             USDC_ADDRESS.toLowerCase() &&
                           shouldRefetchPrice(paymentToken)
                         ) {
-                          getTokenPriceInUSDC(paymentToken)
+                          getTokenPriceInUSDC(paymentToken, address)
                             .then((price) => {
                               setTokenPrice(price);
                             })
@@ -1826,6 +2251,48 @@ export default function Bids({
                       }}
                       className="w-full md:w-40 rounded-xl border border-[rgb(50,255,52)]/40 bg-[rgb(50,255,52)]/5 px-4 py-2.5 text-sm font-orbitron uppercase tracking-widest text-white outline-none transition focus:border-[rgb(50,255,52)] focus:ring-2 focus:ring-[rgb(50,255,52)]/35 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
                     />
+                    {(() => {
+                      const basePrice = selectedCollection.highestBid !== undefined && selectedCollection.highestBid > 0
+                        ? selectedCollection.highestBid
+                        : selectedCollection.startingPrice / 1e6;
+                      const minBid = basePrice * 1.02;
+                      const midBid = basePrice * 1.5;
+                      const highBid = basePrice * 2;
+                      const maxBid = basePrice * 3;
+                      
+                      return (
+                        <div className="flex gap-1.5 flex-wrap">
+                          <button
+                            type="button"
+                            onClick={() => setBidAmountToken(minBid.toFixed(2))}
+                            className="px-2 py-1 text-[9px] font-orbitron uppercase tracking-wider rounded-md border border-[rgb(50,255,52)]/30 bg-[rgb(50,255,52)]/5 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/15 transition"
+                          >
+                            +2%
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setBidAmountToken(midBid.toFixed(2))}
+                            className="px-2 py-1 text-[9px] font-orbitron uppercase tracking-wider rounded-md border border-[rgb(50,255,52)]/30 bg-[rgb(50,255,52)]/5 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/15 transition"
+                          >
+                            1.5x
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setBidAmountToken(highBid.toFixed(2))}
+                            className="px-2 py-1 text-[9px] font-orbitron uppercase tracking-wider rounded-md border border-[rgb(50,255,52)]/30 bg-[rgb(50,255,52)]/5 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/15 transition"
+                          >
+                            2x
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setBidAmountToken(maxBid.toFixed(2))}
+                            className="px-2 py-1 text-[9px] font-orbitron uppercase tracking-wider rounded-md border border-[rgb(50,255,52)]/30 bg-[rgb(50,255,52)]/5 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/15 transition"
+                          >
+                            3x
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
                   {(() => {
                     const auction = paginatedFilteredAuctions.find(
@@ -1892,21 +2359,43 @@ export default function Bids({
                   })()}
                 </div>
 
-                <div className="flex flex-col sm:flex-row gap-3 md:gap-5 w-full max-w-full md:max-w-[500px]">
+                <div className="flex flex-row gap-2 md:gap-3 w-full max-w-full md:max-w-[550px]">
                   <button
                     type="button"
                     onClick={handlePlaceBid}
                     disabled={
                       !isBidValid || !account || isSubmitting || isUserSeller
                     }
-                    className={`inline-flex items-center justify-center rounded-full w-full px-4 md:px-6 h-10 text-xs md:text-sm font-orbitron uppercase tracking-[0.14em] md:tracking-[0.18em] transition ${
+                    className={`inline-flex items-center justify-center rounded-full flex-1 px-3 md:px-4 h-9 text-[10px] md:text-xs font-orbitron uppercase tracking-[0.1em] md:tracking-[0.12em] transition whitespace-nowrap ${
                       isBidValid && account && !isSubmitting && !isUserSeller
                         ? "border border-[rgb(50,255,52)] bg-[rgb(50,255,52)]/10 text-[rgb(50,255,52)] hover:cursor-pointer hover:bg-[rgb(50,255,52)] hover:text-black"
                         : "border border-white/12 text-[rgb(186,255,188)]/45"
                     }`}
                   >
-                    {isSubmitting ? "Submitting..." : "Place Bid"}
+                    {isSubmitting ? "..." : "Place Bid"}
                   </button>
+                  {!userOffer && (
+                    <button
+                      type="button"
+                      onClick={handleMakeOffer}
+                      disabled={
+                        !isBidValid ||
+                        !account ||
+                        isSubmittingOffer ||
+                        isUserSeller
+                      }
+                      className={`inline-flex items-center justify-center gap-1.5 rounded-full flex-1 px-3 md:px-4 h-9 text-[10px] md:text-xs font-orbitron uppercase tracking-[0.1em] md:tracking-[0.12em] transition whitespace-nowrap ${
+                        isBidValid && account && !isSubmittingOffer && !isUserSeller
+                          ? "border border-blue-500 bg-blue-500/10 text-blue-500 hover:cursor-pointer hover:bg-blue-500 hover:text-black"
+                          : "border border-white/12 text-[rgb(186,255,188)]/45"
+                      }`}
+                    >
+                      <span>{isSubmittingOffer ? "..." : "Make Offer"}</span>
+                      {!isSubmittingOffer && (
+                        <InfoTooltip content="Your offer will be transferred from your account and held in escrow until the auction ends or the seller accepts your offer." />
+                      )}
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={handleSettleAuction}
@@ -1918,7 +2407,7 @@ export default function Bids({
                         selectedCollection.status,
                       )
                     }
-                    className={`inline-flex items-center justify-center rounded-full w-full px-2 md:px-4 h-10 text-xs md:text-sm font-orbitron uppercase tracking-[0.14em] md:tracking-[0.18em] transition ${
+                    className={`inline-flex items-center justify-center rounded-full flex-1 px-3 md:px-4 h-9 text-[10px] md:text-xs font-orbitron uppercase tracking-[0.1em] md:tracking-[0.12em] transition whitespace-nowrap ${
                       account &&
                       !isSettling &&
                       isAuctionExpired(
@@ -1929,9 +2418,109 @@ export default function Bids({
                         : "border border-white/12 text-[rgb(186,255,188)]/45"
                     }`}
                   >
-                    {isSettling ? "Settling..." : "Settle Auction"}
+                    {isSettling ? "..." : "Settle"}
                   </button>
                 </div>
+
+                {userOffer && address && (
+                  <div className="mt-4 rounded-xl border border-[rgb(50,255,52)]/40 bg-[rgb(50,255,52)]/10 px-4 py-3 w-full max-w-full md:max-w-[550px]">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <svg
+                            className="w-4 h-4 text-[rgb(50,255,52)]"
+                            fill="currentColor"
+                            viewBox="0 0 20 20"
+                          >
+                            <path
+                              fillRule="evenodd"
+                              d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z"
+                              clipRule="evenodd"
+                            />
+                          </svg>
+                          <span className="text-[10px] md:text-xs font-orbitron uppercase tracking-[0.12em] md:tracking-[0.16em] text-[rgb(50,255,52)]">
+                            Your Active Offer
+                          </span>
+                        </div>
+                        <div className="text-base md:text-lg font-orbitron font-bold text-white">
+                          {userOffer.amount.toFixed(2)} USDC
+                        </div>
+                        <div className="text-[10px] font-orbitron text-[rgb(186,255,188)]/70 mt-1">
+                          Created{" "}
+                          {new Date(
+                            parseInt(userOffer.createdAt) * 1000,
+                          ).toLocaleDateString()}
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={handleWithdrawOffer}
+                        disabled={isWithdrawingOffer}
+                        className={`px-3 md:px-4 py-2 rounded-full font-orbitron text-[10px] md:text-xs uppercase tracking-[0.1em] md:tracking-[0.12em] transition whitespace-nowrap ${
+                          isWithdrawingOffer
+                            ? "bg-white/5 text-white/30 cursor-not-allowed border border-white/12"
+                            : "bg-red-600/10 hover:bg-red-600 text-red-500 hover:text-black border border-red-500/40 hover:cursor-pointer"
+                        }`}
+                      >
+                        {isWithdrawingOffer ? (
+                          <div className="flex items-center gap-2">
+                            <svg
+                              className="animate-spin h-4 w-4"
+                              viewBox="0 0 24 24"
+                            >
+                              <circle
+                                className="opacity-25"
+                                cx="12"
+                                cy="12"
+                                r="10"
+                                stroke="currentColor"
+                                strokeWidth="4"
+                                fill="none"
+                              />
+                              <path
+                                className="opacity-75"
+                                fill="currentColor"
+                                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                              />
+                            </svg>
+                            <span>Withdrawing...</span>
+                          </div>
+                        ) : (
+                          "Withdraw Offer"
+                        )}
+                      </button>
+                    </div>
+
+                    {withdrawOfferTxnHash && (
+                      <div className="mt-3 pt-3 border-t border-[rgb(50,255,52)]/20">
+                        <p className="text-[10px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70 mb-1">
+                          Withdrawal Transaction
+                        </p>
+                        <a
+                          href={explorer.transaction(withdrawOfferTxnHash)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-orbitron text-[rgb(50,255,52)] hover:underline break-all flex items-center gap-1"
+                        >
+                          {withdrawOfferTxnHash}
+                          <svg
+                            className="w-3 h-3 flex-shrink-0"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                            />
+                          </svg>
+                        </a>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {txnHash && (
                   <div className="rounded-xl border border-[rgb(50,255,52)]/40 bg-[rgb(50,255,52)]/10 px-4 py-3 w-full">
@@ -1945,6 +2534,21 @@ export default function Bids({
                       className="text-sm font-orbitron text-[rgb(50,255,52)] hover:underline break-all w-full"
                     >
                       {txnHash}
+                    </a>
+                  </div>
+                )}
+                {offerTxnHash && (
+                  <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 w-full">
+                    <p className="text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70 mb-2">
+                      Offer Transaction Submitted
+                    </p>
+                    <a
+                      href={explorer.transaction(offerTxnHash)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm font-orbitron text-blue-500 hover:underline break-all w-full"
+                    >
+                      {offerTxnHash}
                     </a>
                   </div>
                 )}

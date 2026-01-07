@@ -1,6 +1,6 @@
-import { gql } from '@apollo/client';
-import type { AuctionsResponse, MyListingsResponse } from '../types';
-import { GRAPHQL_QUERY_LIMIT } from '../constants';
+import { gql } from "@apollo/client";
+import type { AuctionsResponse, MyListingsResponse } from "../types";
+import { GRAPHQL_QUERY_LIMIT } from "../constants";
 
 // Reduced limits from 1000000 - prevents massive payloads
 export const AUCTIONS_QUERY = gql`
@@ -43,16 +43,31 @@ export const AUCTIONS_QUERY = gql`
         }
       }
     }
+    bm011OfferModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
+      edges {
+        node {
+          auction_id
+          buyer
+          amount
+          status
+          created_at
+          expires_at
+        }
+      }
+    }
   }
 `;
 
 export async function fetchAuctions(): Promise<AuctionsResponse> {
-  throw new Error('Use Apollo Client hooks instead. See useAuctions hook.');
+  throw new Error("Use Apollo Client hooks instead. See useAuctions hook.");
 }
 
 export const MY_LISTINGS_QUERY = gql`
   query MyListings($seller: String!) {
-    bm011AuctionModels(where: {seller: $seller}, order: {direction: DESC, field: AUCTION_ID}) {
+    bm011AuctionModels(
+      where: { seller: $seller }
+      order: { direction: DESC, field: AUCTION_ID }
+    ) {
       edges {
         node {
           auction_id
@@ -68,11 +83,25 @@ export const MY_LISTINGS_QUERY = gql`
         }
       }
     }
+    bm011OfferModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
+      edges {
+        node {
+          auction_id
+          buyer
+          amount
+          status
+          created_at
+          expires_at
+        }
+      }
+    }
   }
 `;
 
-export async function fetchMyListings(_seller: string): Promise<MyListingsResponse> {
-  throw new Error('Use Apollo Client hooks instead. See useMyListings hook.');
+export async function fetchMyListings(
+  _seller: string,
+): Promise<MyListingsResponse> {
+  throw new Error("Use Apollo Client hooks instead. See useMyListings hook.");
 }
 
 // Optimized consolidated query - reduced limits to 500 (from 1M) and removed 'metadataDescription'.
@@ -144,4 +173,3 @@ export const CONSOLIDATED_QUERY = gql`
     }
   }
 `;
-

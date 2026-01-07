@@ -47,7 +47,7 @@
     },
     {
       "address": "0x4604ef40c66d0a7e0ba00f323f21e4c485c48eef1daf2bee0d1be0e602eac13",
-      "class_hash": "0x70c4f591caba47098ad8d860546673b181d57527aa3a90ee471f581ab0d0d05",
+      "class_hash": "0x32c44715caf9d752b972e9f86d1e1378ed0ef9ce3f7125b8fffb99a4ccafcf0",
       "init_calldata": [],
       "tag": "bm_0_1_1-auction_systems",
       "selector": "0xeacbf1a111d9503b619a94bf519989760a397a207fb48a3235c38e72d22854",
@@ -59,6 +59,10 @@
         "withdraw_bid",
         "end_auction",
         "settle_auction",
+        "make_offer",
+        "accept_offer",
+        "reject_offer",
+        "withdraw_offer",
         "upgrade"
       ]
     },
@@ -172,6 +176,45 @@
           "key": true
         },
         {
+          "name": "count",
+          "type": "core::integer::u32",
+          "key": false
+        }
+      ],
+      "class_hash": "0x1f211f0550ac900eb57f774c96779f789453cf5d3c530119de0706d34a63f20",
+      "tag": "bm_0_1_1-AuctionOfferCount",
+      "selector": "0x26169d1a83fc12db5da727c7c2ccf0d485a88a95dfbe26391e4628e433dd744"
+    },
+    {
+      "members": [
+        {
+          "name": "auction_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "offer_index",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "buyer",
+          "type": "core::felt252",
+          "key": false
+        }
+      ],
+      "class_hash": "0x51d02d65d7573b3dd6fcb963370c7ec5a363571e79c489cfac15ad817a2345",
+      "tag": "bm_0_1_1-AuctionOfferIndex",
+      "selector": "0x7043c6da55f7c75ab4fb56faa937315acb2bae4102c1be4fd02d59323a1d00"
+    },
+    {
+      "members": [
+        {
+          "name": "auction_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
           "name": "bidder",
           "type": "core::felt252",
           "key": true
@@ -234,6 +277,43 @@
       "class_hash": "0x3ab3b1559fe8b361e3df86821e57183391db0a23ad7bf77eaed198c80dd34f1",
       "tag": "bm_0_1_1-ListedToken",
       "selector": "0x4a366128a27c3eb8c8926a2303a9220b3a524fdae14ec36c57a4e4541ddc03e"
+    },
+    {
+      "members": [
+        {
+          "name": "auction_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "buyer",
+          "type": "core::felt252",
+          "key": true
+        },
+        {
+          "name": "amount",
+          "type": "core::integer::u64",
+          "key": false
+        },
+        {
+          "name": "status",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "created_at",
+          "type": "core::integer::u64",
+          "key": false
+        },
+        {
+          "name": "expires_at",
+          "type": "core::integer::u64",
+          "key": false
+        }
+      ],
+      "class_hash": "0x10f1b32f0ecead3aee746ec47315fa64230cdc2e8d54442beb9a3c90060b66f",
+      "tag": "bm_0_1_1-Offer",
+      "selector": "0x64f03cb220057659600f9de99622d4684d00ce4789e47d052f4b0583e612943"
     },
     {
       "members": [
@@ -428,6 +508,38 @@
       "class_hash": "0x55aa0849e28938d2923a5ec9efd496c43f4b37edb01709274d7a9e0b2f30060",
       "tag": "bm_0_1_1-BidPlaced",
       "selector": "0x4bd2ef2f6c6413acc8e8e600c2feeb5c98dd095f4628f5319f31bba2e0ac6e0"
+    },
+    {
+      "members": [
+        {
+          "name": "auction_id",
+          "type": "core::integer::u32",
+          "key": true
+        },
+        {
+          "name": "buyer",
+          "type": "core::felt252",
+          "key": false
+        },
+        {
+          "name": "amount",
+          "type": "core::integer::u64",
+          "key": false
+        },
+        {
+          "name": "status",
+          "type": "core::integer::u8",
+          "key": false
+        },
+        {
+          "name": "timestamp",
+          "type": "core::integer::u64",
+          "key": false
+        }
+      ],
+      "class_hash": "0x32a36cde0f7a30233852391b8e18c96f0ac076b507fae0830f24d3e762f8641",
+      "tag": "bm_0_1_1-OfferEvent",
+      "selector": "0x5cfce33c4289effe120a7147f799edfe25906991bf6a26bf540f393c2e45b11"
     }
   ],
   "external_contracts": [],
@@ -2291,7 +2403,7 @@
       "inputs": [
         {
           "name": "event",
-          "type": "survivor_exchange::events::index::BidPlaced"
+          "type": "survivor_exchange::events::index::OfferEvent"
         }
       ],
       "outputs": [],
@@ -2310,7 +2422,7 @@
       "inputs": [
         {
           "name": "value",
-          "type": "survivor_exchange::events::index::BidPlacedValue"
+          "type": "survivor_exchange::events::index::OfferEventValue"
         }
       ],
       "outputs": [],
@@ -2411,6 +2523,54 @@
       ]
     },
     {
+      "type": "struct",
+      "name": "survivor_exchange::events::index::OfferEvent",
+      "members": [
+        {
+          "name": "auction_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "buyer",
+          "type": "core::felt252"
+        },
+        {
+          "name": "amount",
+          "type": "core::integer::u64"
+        },
+        {
+          "name": "status",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "timestamp",
+          "type": "core::integer::u64"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "survivor_exchange::events::index::OfferEventValue",
+      "members": [
+        {
+          "name": "buyer",
+          "type": "core::felt252"
+        },
+        {
+          "name": "amount",
+          "type": "core::integer::u64"
+        },
+        {
+          "name": "status",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "timestamp",
+          "type": "core::integer::u64"
+        }
+      ]
+    },
+    {
       "type": "event",
       "name": "survivor_exchange::events::index::e_AuctionEvent::Event",
       "kind": "enum",
@@ -2419,6 +2579,12 @@
     {
       "type": "event",
       "name": "survivor_exchange::events::index::e_BidPlaced::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "survivor_exchange::events::index::e_OfferEvent::Event",
       "kind": "enum",
       "variants": []
     },
@@ -2500,6 +2666,58 @@
         },
         {
           "name": "contract_address",
+          "type": "core::felt252"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "survivor_exchange::models::index::AuctionOfferCount",
+      "members": [
+        {
+          "name": "auction_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "count",
+          "type": "core::integer::u32"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "survivor_exchange::models::index::AuctionOfferCountValue",
+      "members": [
+        {
+          "name": "count",
+          "type": "core::integer::u32"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "survivor_exchange::models::index::AuctionOfferIndex",
+      "members": [
+        {
+          "name": "auction_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "offer_index",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "buyer",
+          "type": "core::felt252"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "survivor_exchange::models::index::AuctionOfferIndexValue",
+      "members": [
+        {
+          "name": "buyer",
           "type": "core::felt252"
         }
       ]
@@ -2639,6 +2857,58 @@
         {
           "name": "auction_id",
           "type": "core::integer::u32"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "survivor_exchange::models::index::Offer",
+      "members": [
+        {
+          "name": "auction_id",
+          "type": "core::integer::u32"
+        },
+        {
+          "name": "buyer",
+          "type": "core::felt252"
+        },
+        {
+          "name": "amount",
+          "type": "core::integer::u64"
+        },
+        {
+          "name": "status",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "created_at",
+          "type": "core::integer::u64"
+        },
+        {
+          "name": "expires_at",
+          "type": "core::integer::u64"
+        }
+      ]
+    },
+    {
+      "type": "struct",
+      "name": "survivor_exchange::models::index::OfferValue",
+      "members": [
+        {
+          "name": "amount",
+          "type": "core::integer::u64"
+        },
+        {
+          "name": "status",
+          "type": "core::integer::u8"
+        },
+        {
+          "name": "created_at",
+          "type": "core::integer::u64"
+        },
+        {
+          "name": "expires_at",
+          "type": "core::integer::u64"
         }
       ]
     },
@@ -2852,6 +3122,18 @@
     },
     {
       "type": "event",
+      "name": "survivor_exchange::models::index::m_AuctionOfferCount::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "survivor_exchange::models::index::m_AuctionOfferIndex::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
       "name": "survivor_exchange::models::index::m_Bid::Event",
       "kind": "enum",
       "variants": []
@@ -2865,6 +3147,12 @@
     {
       "type": "event",
       "name": "survivor_exchange::models::index::m_ListedToken::Event",
+      "kind": "enum",
+      "variants": []
+    },
+    {
+      "type": "event",
+      "name": "survivor_exchange::models::index::m_Offer::Event",
       "kind": "enum",
       "variants": []
     },
@@ -3099,6 +3387,90 @@
           "outputs": [
             {
               "type": "core::bool"
+            }
+          ],
+          "state_mutability": "view"
+        },
+        {
+          "type": "function",
+          "name": "make_offer",
+          "inputs": [
+            {
+              "name": "auction_id",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "offer_amount",
+              "type": "core::integer::u64"
+            },
+            {
+              "name": "expires_in",
+              "type": "core::option::Option::<core::integer::u64>"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "accept_offer",
+          "inputs": [
+            {
+              "name": "auction_id",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "buyer",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "reject_offer",
+          "inputs": [
+            {
+              "name": "auction_id",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "buyer",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "withdraw_offer",
+          "inputs": [
+            {
+              "name": "auction_id",
+              "type": "core::integer::u32"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "get_offer",
+          "inputs": [
+            {
+              "name": "auction_id",
+              "type": "core::integer::u32"
+            },
+            {
+              "name": "buyer",
+              "type": "core::starknet::contract_address::ContractAddress"
+            }
+          ],
+          "outputs": [
+            {
+              "type": "survivor_exchange::models::index::Offer"
             }
           ],
           "state_mutability": "view"

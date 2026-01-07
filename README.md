@@ -12,10 +12,10 @@
 
 # Survivor Exchange
 
-**Survivor Exchange** is a fully on-chain auction and rental marketplace for BEAST NFTs from [Loot Survivor](https://docs.provable.games/lootsurvivor/beasts), built on Starknet with [Dojo 1.8.0](https://dojoengine.org). Supports bulk auctions (bundles up to 75 BEASTs), English-style timed bidding with reserves/increments, rentals (WIP), secure vaults for bid custody, and admin controls (whitelisting, fees). Payments via USDC/SURVIVOR/LORDS (configurable). 100% provable, reduces OTC friction, boosts liquidity, captures DAO fees (1-2%).
+**Survivor Exchange** is a fully on-chain auction and rental marketplace for BEAST NFTs from [Loot Survivor](https://docs.provable.games/lootsurvivor/beasts), built on Starknet with [Dojo 1.8.0](https://dojoengine.org). Supports bulk auctions (bundles up to 163 BEASTs), English-style timed bidding with reserves/increments, rentals (WIP), secure vaults for bid custody, and admin controls (whitelisting, fees). Payments via USDC/SURVIVOR/LORDS (configurable). 100% provable, reduces OTC friction, boosts liquidity, captures DAO fees (1-2%).
 
 **Key Features**:
-- Bulk auctions: e.g., 75 Shiny BEASTs @50k SURVIVOR reserve.
+- Bulk auctions: e.g., 220 Shiny BEASTs @50k SURVIVOR reserve.
 - Bidding: Auto-refund losers; withdraw non-winning bids.
 - Rentals: Short-term leases w/ collateral (WIP).
 - Vaults: Escrow bids/NFTs.
