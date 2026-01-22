@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, useEffect, useRef } from "react";
+import React, { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useAccount, useExplorer, useProvider } from "@starknet-react/core";
 import Image from "next/image";
 import MonsterCollectionCard from "./monster-collection-card";
@@ -8,8 +8,11 @@ import BidPriceChart from "./bid-price-chart";
 import BidsSkeleton from "./bids-skeleton";
 import CustomDropdown from "./custom-dropdown";
 import InfoTooltip from "./info-tooltip";
+import BeastDetailModal from "./beast-detail-modal";
 import type { AuctionItem } from "../lib/types";
 import { AuctionWithNFTs } from "../hooks/use-auctions";
+import { useBeastSkullRewards } from "../hooks/use-beast-skull-rewards";
+import { useSummitLeaderboard, findMatchingSummitBeast, SummitBeast } from "../hooks/use-summit-leaderboard";
 import { uint256 } from "starknet";
 import {
   truncateAddress,
@@ -148,13 +151,56 @@ export default function Bids({
     animated: "",
     priceSort: "",
     tokenIdSort: "",
+    summitTop15: "",
   });
 
   const [localCurrentPage, setLocalCurrentPage] = useState(currentPage);
 
+  // Fetch top 15 summit beasts by blocks held (must be before filteredAuctions)
+  const { topBeasts: summitTopBeasts, error: summitError } = useSummitLeaderboard(15);
+
+  // Helper to check if auction contains any summit beasts (by token ID or prefix+suffix)
+  const auctionHasSummitBeast = useCallback((auction: AuctionWithNFTs) => {
+    if (!summitTopBeasts.length || !auction.nfts?.length) {
+      return false;
+    }
+
+    return auction.nfts.some(nft => {
+      const tokenId = nft.tokenId.startsWith("0x")
+        ? parseInt(nft.tokenId, 16)
+        : parseInt(nft.tokenId);
+      const prefixAttr = nft.attributes?.find(a => a.trait_type === "Prefix")?.value;
+      const suffixAttr = nft.attributes?.find(a => a.trait_type === "Suffix")?.value;
+      const prefix = prefixAttr !== undefined ? String(prefixAttr) : undefined;
+      const suffix = suffixAttr !== undefined ? String(suffixAttr) : undefined;
+      const beastName = nft.beastName;
+
+      return findMatchingSummitBeast(prefix, suffix, beastName, tokenId, summitTopBeasts) !== null;
+    });
+  }, [summitTopBeasts]);
+
+  // Count auctions containing summit beasts (for the button badge)
+  // Returns 0 if summit API failed to hide the feature gracefully
+  const summitListedCount = useMemo(() => {
+    if (summitError) return 0;
+    return auctions.filter(auction => auctionHasSummitBeast(auction)).length;
+  }, [auctions, auctionHasSummitBeast, summitError]);
+
   const filteredAuctions = useMemo(() => {
-    return applyFiltersToAuctions(auctions, filters);
-  }, [auctions, filters]);
+    let result = applyFiltersToAuctions(auctions, filters);
+
+    // Apply summit filter if active - show ONLY auctions with top 15 beasts
+    if (filters.summitTop15) {
+      // If summit data not loaded yet, show nothing
+      if (summitTopBeasts.length === 0) {
+        return [];
+      }
+      // Filter to only auctions containing summit beasts (by token ID or prefix+suffix)
+      result = result.filter(auction => auctionHasSummitBeast(auction));
+    }
+
+    return result;
+  }, [auctions, filters, summitTopBeasts, auctionHasSummitBeast]);
 
   const totalFilteredPages = useMemo(() => {
     return Math.max(1, Math.ceil(filteredAuctions.length / DEFAULT_PAGE_SIZE));
@@ -238,6 +284,7 @@ export default function Bids({
     collections[0]?.id ?? "",
   );
   const [bidAmountToken, setBidAmountToken] = useState<string>("");
+  const [bidInputHighlight, setBidInputHighlight] = useState(false);
   const [paymentToken, setPaymentToken] = useState(USDC_ADDRESS);
   const [tokenLogos, setTokenLogos] = useState<Record<string, string>>({});
   const [, setConvertedStartingPrice] = useState<number>(0);
@@ -246,6 +293,8 @@ export default function Bids({
   const [tokenPrice, setTokenPrice] = useState<number | null>(null);
   const [copied, setCopied] = useState(false);
   const [, setCopiedTimeout] = useState<NodeJS.Timeout | null>(null);
+  const [isBeastModalOpen, setIsBeastModalOpen] = useState(false);
+  const [selectedBeastIndex, setSelectedBeastIndex] = useState(0);
   const [tokenBalances, setTokenBalances] = useState<
     Record<string, { amount: string; usdValue: string | null }>
   >({});
@@ -328,6 +377,79 @@ export default function Bids({
       collections.find((collection) => collection.id === selectedCollectionId),
     [selectedCollectionId, collections],
   );
+
+  // Get NFTs for the selected auction (for modal)
+  const selectedAuctionNfts = useMemo(() => {
+    if (!selectedCollectionId) return [];
+    const auction = paginatedFilteredAuctions.find(
+      (a) => a.auction_id === selectedCollectionId,
+    );
+    return auction?.nfts || [];
+  }, [selectedCollectionId, paginatedFilteredAuctions]);
+
+  // Prepare beast metadata for skull rewards hook
+  const selectedAuctionBeastData = useMemo(() => {
+    if (!selectedCollectionId) return [];
+
+    const auction = paginatedFilteredAuctions.find(
+      (a) => a.auction_id === selectedCollectionId,
+    );
+    if (!auction?.nfts) return [];
+
+    return auction.nfts.map((nft) => {
+      // Extract "Adventurers Killed" from NFT attributes
+      const adventurersKilledAttr = nft.attributes.find(
+        (a) => a.trait_type === "Adventurers Killed"
+      );
+
+      // Parse tokenId - handle hex format
+      const tokenIdStr = nft.tokenId;
+      const tokenId = tokenIdStr.startsWith("0x") || tokenIdStr.startsWith("0X")
+        ? parseInt(tokenIdStr, 16)
+        : parseInt(tokenIdStr, 10);
+
+      return {
+        tokenId,
+        adventurersKilled: adventurersKilledAttr ? Number(adventurersKilledAttr.value) : 0,
+      };
+    });
+  }, [selectedCollectionId, paginatedFilteredAuctions]);
+
+  // Fetch unclaimed skull rewards for selected auction's NFTs
+  const {
+    loading: skullsLoading,
+    error: skullsError,
+    totalUnclaimedSkulls,
+  } = useBeastSkullRewards(selectedAuctionBeastData);
+
+  // Check if selected auction contains any top summit beasts
+  const auctionSummitBeasts = useMemo(() => {
+    if (!selectedAuctionNfts.length || !summitTopBeasts.length) return [];
+
+    const matches: Array<{ nftTokenId: number; summitBeast: SummitBeast }> = [];
+
+    for (const nft of selectedAuctionNfts) {
+      // Parse token ID
+      const tokenId = nft.tokenId.startsWith("0x")
+        ? parseInt(nft.tokenId, 16)
+        : parseInt(nft.tokenId);
+
+      // Get NFT attributes
+      const prefixAttr = nft.attributes.find(a => a.trait_type === "Prefix")?.value;
+      const suffixAttr = nft.attributes.find(a => a.trait_type === "Suffix")?.value;
+      const beastNameAttr = nft.attributes.find(a => a.trait_type === "Beast")?.value;
+      const prefix = prefixAttr !== undefined ? String(prefixAttr) : undefined;
+      const suffix = suffixAttr !== undefined ? String(suffixAttr) : undefined;
+      const beastName = beastNameAttr !== undefined ? String(beastNameAttr) : undefined;
+
+      const match = findMatchingSummitBeast(prefix, suffix, beastName, tokenId, summitTopBeasts);
+      if (match) {
+        matches.push({ nftTokenId: tokenId, summitBeast: match });
+      }
+    }
+
+    return matches;
+  }, [selectedAuctionNfts, summitTopBeasts]);
 
   const isValidPrice = useCallback((price: number | null): boolean => {
     if (price === null) return false;
@@ -1626,26 +1748,51 @@ export default function Bids({
       );
     }
 
-    const renderGrid = () => (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 w-full">
-        {collections.map((collection) => {
-          const auction = paginatedFilteredAuctions.find(
-            (a) => a.auction_id === collection.id,
-          );
-          const nfts = auction?.nfts || [];
+    const renderGrid = () => {
+      // Find the index of the selected card to determine which row it's in
+      const selectedIndex = collections.findIndex(c => c.id === selectedCollectionId);
 
-          return (
-            <MonsterCollectionCard
-              key={collection.id}
-              collection={collection}
-              isSelected={collection.id === selectedCollectionId}
-              onSelect={() => handleSelectCollection(collection)}
-              nfts={nfts}
-            />
-          );
-        })}
-      </div>
-    );
+      // Calculate which row the selected card is in (3 columns on desktop)
+      // We use 3 columns as the base since that's the desktop layout
+      const columnsPerRow = 3;
+      const selectedRow = selectedIndex >= 0 ? Math.floor(selectedIndex / columnsPerRow) : -1;
+
+      // Find the index of the last card in the selected row
+      const lastIndexInSelectedRow = selectedRow >= 0
+        ? Math.min((selectedRow + 1) * columnsPerRow - 1, collections.length - 1)
+        : -1;
+
+      return (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 w-full">
+          {collections.map((collection, index) => {
+            const auction = paginatedFilteredAuctions.find(
+              (a) => a.auction_id === collection.id,
+            );
+            const nfts = auction?.nfts || [];
+            const isSelected = collection.id === selectedCollectionId;
+
+            // Show detail panel after the last card in the selected row
+            const showDetailAfterThis = index === lastIndexInSelectedRow && selectedCollection;
+
+            return (
+              <React.Fragment key={collection.id}>
+                <MonsterCollectionCard
+                  collection={collection}
+                  isSelected={isSelected}
+                  onSelect={() => handleSelectCollection(collection)}
+                  nfts={nfts}
+                />
+                {showDetailAfterThis && (
+                  <div className="col-span-1 md:col-span-2 lg:col-span-3">
+                    {renderSelectedDetails()}
+                  </div>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
+      );
+    };
 
     const renderSelectedDetails = () => {
       if (!selectedCollection) return null;
@@ -1747,7 +1894,7 @@ export default function Bids({
                         onScroll={checkScrollButtons}
                         className="flex gap-3 overflow-x-auto pb-2 scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
                       >
-                        {nfts.map((nft) => {
+                        {nfts.map((nft, index) => {
                           const imageSrc = nft.metadata?.image
                             ? nft.metadata.image
                             : nft.imagePath
@@ -1758,7 +1905,11 @@ export default function Bids({
                           return (
                             <div
                               key={`${nft.contractAddress}-${nft.tokenId}`}
-                              className={`shrink-0 h-28 w-fit overflow-hidden ${
+                              onClick={() => {
+                                setSelectedBeastIndex(index);
+                                setIsBeastModalOpen(true);
+                              }}
+                              className={`group/nft relative shrink-0 h-28 w-fit overflow-hidden cursor-pointer transition-all hover:scale-105 hover:ring-2 hover:ring-[rgb(50,255,52)]/60 ${
                                 !isBase64
                                   ? "border border-[rgb(50,255,52)]/35 bg-[rgb(50,255,52)]/10"
                                   : ""
@@ -1782,10 +1933,30 @@ export default function Bids({
                                   unoptimized
                                 />
                               )}
+                              {/* Eye icon overlay on hover */}
+                              <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover/nft:opacity-100 transition-opacity">
+                                <svg
+                                  width="24"
+                                  height="24"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="rgb(50,255,52)"
+                                  strokeWidth="2"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                                  <circle cx="12" cy="12" r="3" />
+                                </svg>
+                              </div>
                             </div>
                           );
                         })}
                       </div>
+                      {/* Hint text for discoverability */}
+                      <p className="text-[10px] text-center text-[rgb(186,255,188)]/50 mt-2 font-orbitron uppercase tracking-wider">
+                        {nfts.length === 1 ? "Click to view details" : "Click any beast to view details"}
+                      </p>
                     </div>
                   );
                 })()}
@@ -1858,6 +2029,47 @@ export default function Bids({
                     );
                   })()}
                 </p>
+                {/* Unclaimed SKULL tokens display - hidden if API fails */}
+                {selectedAuctionBeastData.length > 0 && !skullsError && (
+                  <div className="flex items-center gap-2 text-xs leading-relaxed text-[rgb(186,255,188)]/70">
+                    <span>Unclaimed:</span>
+                    <Image
+                      src="/skull-token.png"
+                      alt="SKULL token"
+                      width={18}
+                      height={18}
+                      className="inline-block"
+                    />
+                    {skullsLoading ? (
+                      <span className="text-[rgb(50,255,52)]/50 animate-pulse">...</span>
+                    ) : totalUnclaimedSkulls > 0 ? (
+                      <span className="text-[rgb(50,255,52)] font-semibold">
+                        {totalUnclaimedSkulls}
+                      </span>
+                    ) : (
+                      <span>0</span>
+                    )}
+                    <InfoTooltip content="SKULL tokens can be claimed from beasts that have killed adventurers in Loot Survivor. These unclaimed tokens transfer with the NFTs." />
+                  </div>
+                )}
+                {/* Summit Leaderboard Beast Indicator - hidden if API fails */}
+                {auctionSummitBeasts.length > 0 && !summitError && (
+                  <div className="flex items-center gap-2 text-xs leading-relaxed">
+                    <span className="px-2 py-1 rounded-full bg-[rgb(255,215,0)]/20 border border-[rgb(255,215,0)]/40 text-[rgb(255,215,0)] font-orbitron uppercase tracking-wider flex items-center gap-1.5">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+                      </svg>
+                      Summit Top {Math.min(...auctionSummitBeasts.map(m => m.summitBeast.rank))}
+                    </span>
+                    <InfoTooltip
+                      content={
+                        auctionSummitBeasts.length === 1
+                          ? `"${auctionSummitBeasts[0].summitBeast.prefix} ${auctionSummitBeasts[0].summitBeast.suffix}" - #${auctionSummitBeasts[0].summitBeast.rank}`
+                          : `Contains ${auctionSummitBeasts.length} Top 15 Summit names: ${auctionSummitBeasts.map(m => `"${m.summitBeast.prefix} ${m.summitBeast.suffix}" (#${m.summitBeast.rank})`).join(", ")}`
+                      }
+                    />
+                  </div>
+                )}
                 {(() => {
                   const statusNum = parseInt(selectedCollection.status);
                   const formatTime = (timestamp: string) => {
@@ -2063,15 +2275,15 @@ export default function Bids({
                   </div>
                 </div>
 
-                <div className="w-full rounded-xl border border-[rgb(50,255,52)]/20 bg-[rgb(50,255,52)]/5 px-3 md:px-4 py-3 md:py-4">
+                <div className="w-full rounded-xl border border-[rgb(50,255,52)]/20 bg-[rgb(50,255,52)]/5 px-3 md:px-4 py-3 md:py-4 overflow-hidden">
                   <div className="flex flex-col md:flex-row gap-4">
-                    <div className="flex-1 overflow-x-auto">
+                    <div className="flex-1 min-w-0">
                       <p className="text-[rgb(186,255,188)]/70 text-[10px] md:text-[11px] font-orbitron uppercase tracking-[0.16em] mb-3">
                         Live Price Chart
                       </p>
-                      <div className="min-w-[300px]">
+                      <div className="w-full max-w-[400px]">
                         <BidPriceChart
-                          width={400}
+                          width={380}
                           height={120}
                           startingPrice={selectedCollection.startingPrice / 1e6}
                           currentBid={selectedCollection.highestBid}
@@ -2113,7 +2325,37 @@ export default function Bids({
                             })}
                         </div>
                       ) : (
-                        <p className="text-[10px] text-[rgb(186,255,188)]/50">No bids yet</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const reservePrice = selectedCollection.startingPrice / 1e6;
+                            const minBid = (reservePrice * 1.02).toFixed(2);
+                            setBidAmountToken(minBid);
+                            setBidInputHighlight(true);
+                            setTimeout(() => setBidInputHighlight(false), 1000);
+                          }}
+                          className="flex flex-col items-center justify-center py-4 px-2 rounded-lg bg-black/30 border border-dashed border-[rgb(50,255,52)]/40 hover:bg-[rgb(50,255,52)]/10 hover:border-[rgb(50,255,52)]/60 transition-all cursor-pointer w-full animate-pulse-glow"
+                        >
+                          <svg
+                            width="24"
+                            height="24"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="rgb(50,255,52)"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="mb-2 opacity-60"
+                          >
+                            <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                          </svg>
+                          <p className="text-[11px] font-orbitron uppercase tracking-wider text-[rgb(50,255,52)] text-center">
+                            Be the first to bid!
+                          </p>
+                          <p className="text-[9px] text-[rgb(186,255,188)]/50 mt-1 text-center">
+                            Click to bid {formatUSDSmart((selectedCollection.startingPrice / 1e6) * 1.02)}
+                          </p>
+                        </button>
                       )}
                     </div>
                   </div>
@@ -2195,6 +2437,43 @@ export default function Bids({
                     const averagePower =
                       nfts.length > 0 ? totalPower / nfts.length : 0;
 
+                    // For single-NFT auctions, show Type, Power, and Tier in a compact row
+                    if (nfts.length === 1) {
+                      const singleNft = nfts[0];
+                      const beastType = singleNft.beastType || "—";
+                      const tier = singleNft.tier || "—";
+                      const level = singleNft.level || "—";
+
+                      return (
+                        <div className="flex-1 grid grid-cols-3 gap-2 md:gap-3 text-sm text-white">
+                          <div className="rounded-xl border border-white/12 bg-white/5 px-2 md:px-3 py-2 md:py-3 text-center">
+                            <p className="text-[rgb(186,255,188)]/70 text-[9px] md:text-[10px] uppercase tracking-[0.16em]">
+                              Type
+                            </p>
+                            <p className="font-orbitron text-sm md:text-base tracking-[0.12em]">
+                              {beastType}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-white/12 bg-white/5 px-2 md:px-3 py-2 md:py-3 text-center">
+                            <p className="text-[rgb(186,255,188)]/70 text-[9px] md:text-[10px] uppercase tracking-[0.16em]">
+                              Power
+                            </p>
+                            <p className="font-orbitron text-sm md:text-base tracking-[0.12em] text-[rgb(50,255,52)]">
+                              {totalPower.toFixed(1)}
+                            </p>
+                          </div>
+                          <div className="rounded-xl border border-white/12 bg-white/5 px-2 md:px-3 py-2 md:py-3 text-center">
+                            <p className="text-[rgb(186,255,188)]/70 text-[9px] md:text-[10px] uppercase tracking-[0.16em]">
+                              Level
+                            </p>
+                            <p className="font-orbitron text-sm md:text-base tracking-[0.12em]">
+                              {level}
+                            </p>
+                          </div>
+                        </div>
+                      );
+                    }
+
                     return (
                       <div className="flex-1 grid grid-cols-2 gap-3 md:gap-6 text-sm text-white w-full">
                         <div className="rounded-xl border border-white/12 bg-white/5 px-3 md:px-4 py-2 md:py-3 text-center">
@@ -2249,47 +2528,53 @@ export default function Bids({
                             });
                         }
                       }}
-                      className="w-full md:w-40 rounded-xl border border-[rgb(50,255,52)]/40 bg-[rgb(50,255,52)]/5 px-4 py-2.5 text-sm font-orbitron uppercase tracking-widest text-white outline-none transition focus:border-[rgb(50,255,52)] focus:ring-2 focus:ring-[rgb(50,255,52)]/35 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      className={`w-full md:w-40 rounded-xl border border-[rgb(50,255,52)]/40 bg-[rgb(50,255,52)]/5 px-4 py-2.5 text-sm font-orbitron uppercase tracking-widest text-white outline-none transition focus:border-[rgb(50,255,52)] focus:ring-2 focus:ring-[rgb(50,255,52)]/35 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${bidInputHighlight ? "animate-attention-flash" : ""}`}
                     />
                     {(() => {
-                      const basePrice = selectedCollection.highestBid !== undefined && selectedCollection.highestBid > 0
-                        ? selectedCollection.highestBid
+                      const hasHighestBid = selectedCollection.highestBid !== undefined && selectedCollection.highestBid > 0;
+                      const basePrice = hasHighestBid
+                        ? selectedCollection.highestBid!
                         : selectedCollection.startingPrice / 1e6;
                       const minBid = basePrice * 1.02;
                       const midBid = basePrice * 1.5;
                       const highBid = basePrice * 2;
                       const maxBid = basePrice * 3;
-                      
+
                       return (
-                        <div className="flex gap-1.5 flex-wrap">
-                          <button
-                            type="button"
-                            onClick={() => setBidAmountToken(minBid.toFixed(2))}
-                            className="px-2 py-1 text-[9px] font-orbitron uppercase tracking-wider rounded-md border border-[rgb(50,255,52)]/30 bg-[rgb(50,255,52)]/5 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/15 transition"
-                          >
-                            +2%
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setBidAmountToken(midBid.toFixed(2))}
-                            className="px-2 py-1 text-[9px] font-orbitron uppercase tracking-wider rounded-md border border-[rgb(50,255,52)]/30 bg-[rgb(50,255,52)]/5 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/15 transition"
-                          >
-                            1.5x
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setBidAmountToken(highBid.toFixed(2))}
-                            className="px-2 py-1 text-[9px] font-orbitron uppercase tracking-wider rounded-md border border-[rgb(50,255,52)]/30 bg-[rgb(50,255,52)]/5 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/15 transition"
-                          >
-                            2x
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setBidAmountToken(maxBid.toFixed(2))}
-                            className="px-2 py-1 text-[9px] font-orbitron uppercase tracking-wider rounded-md border border-[rgb(50,255,52)]/30 bg-[rgb(50,255,52)]/5 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/15 transition"
-                          >
-                            3x
-                          </button>
+                        <div className="flex flex-col gap-1.5">
+                          <p className="text-[9px] text-[rgb(186,255,188)]/50 font-orbitron uppercase tracking-wider">
+                            Quick bid {hasHighestBid ? `(${formatUSDSmart(basePrice)} highest)` : `(${formatUSDSmart(basePrice)} reserve)`}
+                          </p>
+                          <div className="flex gap-1.5 flex-wrap">
+                            <button
+                              type="button"
+                              onClick={() => setBidAmountToken(minBid.toFixed(2))}
+                              className="px-2 py-1 text-[9px] font-orbitron uppercase tracking-wider rounded-md border border-[rgb(50,255,52)]/30 bg-[rgb(50,255,52)]/5 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/15 transition"
+                            >
+                              +2%
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setBidAmountToken(midBid.toFixed(2))}
+                              className="px-2 py-1 text-[9px] font-orbitron uppercase tracking-wider rounded-md border border-[rgb(50,255,52)]/30 bg-[rgb(50,255,52)]/5 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/15 transition"
+                            >
+                              1.5x
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setBidAmountToken(highBid.toFixed(2))}
+                              className="px-2 py-1 text-[9px] font-orbitron uppercase tracking-wider rounded-md border border-[rgb(50,255,52)]/30 bg-[rgb(50,255,52)]/5 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/15 transition"
+                            >
+                              2x
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setBidAmountToken(maxBid.toFixed(2))}
+                              className="px-2 py-1 text-[9px] font-orbitron uppercase tracking-wider rounded-md border border-[rgb(50,255,52)]/30 bg-[rgb(50,255,52)]/5 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/15 transition"
+                            >
+                              3x
+                            </button>
+                          </div>
                         </div>
                       );
                     })()}
@@ -2322,6 +2607,11 @@ export default function Bids({
                     const magicPower = powerDistribution["Magic"] || 0;
                     const brutePower = powerDistribution["Brute"] || 0;
                     const hunterPower = powerDistribution["Hunter"] || 0;
+
+                    // Hide power distribution for single-NFT auctions (only one type will have power)
+                    if (nfts.length === 1) {
+                      return null;
+                    }
 
                     return (
                       <div className="flex flex-col gap-3 flex-1 w-full">
@@ -2366,13 +2656,16 @@ export default function Bids({
                     disabled={
                       !isBidValid || !account || isSubmitting || isUserSeller
                     }
-                    className={`inline-flex items-center justify-center rounded-full flex-1 px-3 md:px-4 h-9 text-[10px] md:text-xs font-orbitron uppercase tracking-[0.1em] md:tracking-[0.12em] transition whitespace-nowrap ${
+                    className={`inline-flex items-center justify-center gap-1.5 rounded-full flex-1 px-3 md:px-4 h-9 text-[10px] md:text-xs font-orbitron uppercase tracking-[0.1em] md:tracking-[0.12em] transition whitespace-nowrap ${
                       isBidValid && account && !isSubmitting && !isUserSeller
                         ? "border border-[rgb(50,255,52)] bg-[rgb(50,255,52)]/10 text-[rgb(50,255,52)] hover:cursor-pointer hover:bg-[rgb(50,255,52)] hover:text-black"
                         : "border border-white/12 text-[rgb(186,255,188)]/45"
                     }`}
                   >
-                    {isSubmitting ? "..." : "Place Bid"}
+                    <span>{isSubmitting ? "..." : "Place Bid"}</span>
+                    {!isSubmitting && (
+                      <InfoTooltip content="Compete in the auction. Your bid must be higher than the current highest bid. Winner is determined when the auction ends." />
+                    )}
                   </button>
                   {!userOffer && (
                     <button
@@ -2392,7 +2685,7 @@ export default function Bids({
                     >
                       <span>{isSubmittingOffer ? "..." : "Make Offer"}</span>
                       {!isSubmittingOffer && (
-                        <InfoTooltip content="Your offer will be transferred from your account and held in escrow until the auction ends or the seller accepts your offer." />
+                        <InfoTooltip content="Make a direct buyout offer to the seller. If accepted, the auction ends immediately and you get the NFTs. Your funds are held in escrow until accepted or auction ends." />
                       )}
                     </button>
                   )}
@@ -2585,8 +2878,6 @@ export default function Bids({
       <>
         {renderGrid()}
 
-        {selectedCollection && renderSelectedDetails()}
-
         <div className="flex justify-center mt-6">
           <Pagination
             currentPage={localCurrentPage}
@@ -2600,8 +2891,16 @@ export default function Bids({
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4">
-      <Filters token={token} filters={filters} onFiltersChange={setFilters} />
+      <Filters token={token} filters={filters} onFiltersChange={setFilters} summitListedCount={summitListedCount} />
       {renderContent()}
+
+      <BeastDetailModal
+        isOpen={isBeastModalOpen}
+        onClose={() => setIsBeastModalOpen(false)}
+        nfts={selectedAuctionNfts}
+        currentIndex={selectedBeastIndex}
+        onNavigate={setSelectedBeastIndex}
+      />
     </div>
   );
 }
