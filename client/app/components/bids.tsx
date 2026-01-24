@@ -1715,7 +1715,15 @@ export default function Bids({
     }
 
     setSelectedCollectionId(collection.id);
-    setBidAmountToken("");
+
+    // Pre-fill bid amount with minimum valid bid (2% above highest bid or reserve)
+    const hasHighestBid = collection.highestBid !== undefined && collection.highestBid > 0;
+    const basePrice = hasHighestBid
+      ? collection.highestBid!
+      : collection.startingPrice / 1e6;
+    const minBid = (basePrice * 1.02).toFixed(2);
+    setBidAmountToken(minBid);
+
     setTxnHash(undefined);
     setOfferTxnHash(undefined);
     setSettleTxnHash(undefined);
@@ -1735,6 +1743,28 @@ export default function Bids({
       } else {
         updateSelection(collection);
       }
+    },
+    [selectedCollectionId, updateSelection],
+  );
+
+  const handleQuickBid = useCallback(
+    (collection: Collection) => {
+      // Select the auction if not already selected
+      if (selectedCollectionId !== collection.id) {
+        updateSelection(collection);
+      }
+      // Wait for the detail view to render, then scroll and highlight
+      setTimeout(() => {
+        if (detailRef.current) {
+          detailRef.current.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        }
+        // Flash the bid input to draw attention
+        setBidInputHighlight(true);
+        setTimeout(() => setBidInputHighlight(false), 1500);
+      }, 100);
     },
     [selectedCollectionId, updateSelection],
   );
@@ -1821,6 +1851,7 @@ export default function Bids({
                   collection={collection}
                   isSelected={isSelected}
                   onSelect={() => handleSelectCollection(collection)}
+                  onQuickBid={() => handleQuickBid(collection)}
                   nfts={nfts}
                 />
                 {showDetailAfterThis && (
