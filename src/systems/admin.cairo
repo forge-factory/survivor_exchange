@@ -31,13 +31,13 @@ pub mod admin_systems {
 
         // Auto-whitelist BEAST collection
         let beast_collection = SupportedNFTCollection {
-            collection_address: BEAST_ADDRESS_MAINNET().into(), standard: 0, // ERC721
+            collection_address: BEAST_ADDRESS_MAINNET().into(), standard: 1, // ERC721
         };
         store.set_supported_nft_collection(@beast_collection);
 
         // Auto-whitelist Adventurer collection
         let adventurer_collection = SupportedNFTCollection {
-            collection_address: ADVENTURER_ADDRESS_MAINNET().into(), standard: 0, // ERC721
+            collection_address: ADVENTURER_ADDRESS_MAINNET().into(), standard: 1, // ERC721
         };
         store.set_supported_nft_collection(@adventurer_collection);
     }

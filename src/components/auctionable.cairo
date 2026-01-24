@@ -76,10 +76,10 @@ pub mod AuctionableComponent {
             let mut auction = store.auction(auction_id);
             auction.assert_is_draft();
 
-            // Verify collection is whitelisted
+            // Verify collection is whitelisted (standard: 1=ERC721, 2=ERC1155)
             let supported = store.supported_nft_collection(collection.into());
             assert(
-                supported.standard != 0xFF && supported.collection_address != 0,
+                supported.standard == 1 || supported.standard == 2,
                 Errors::COLLECTION_NOT_SUPPORTED,
             );
 
