@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useState } from "react";
 import { useWalletModal } from "../providers/wallet-modal-provider";
 import { truncateAddress } from "../lib/utils/formatters";
+import BridgeModal from "./bridge/bridge-modal";
 
     export default function Header() {
         const { disconnect } = useDisconnect();
@@ -35,6 +36,7 @@ import { truncateAddress } from "../lib/utils/formatters";
         }, [connector, controller]);
         
         const [username, setUsername] = useState<string | undefined>(undefined);
+        const [isBridgeModalOpen, setIsBridgeModalOpen] = useState(false);
         const { openWalletModal } = useWalletModal();
         
         // Only fetch username for Cartridge wallet
@@ -111,12 +113,58 @@ import { truncateAddress } from "../lib/utils/formatters";
         };
 
         return (
+            <>
+            <BridgeModal isOpen={isBridgeModalOpen} onClose={() => setIsBridgeModalOpen(false)} />
             <div className="w-full min-h-14 bg-black flex flex-row items-center justify-center px-3 md:px-3.5 py-3">
                 <div className="w-full flex flex-row items-center justify-between gap-2">
                     <div className="flex-shrink-0">
                         <Image src="/logo.png" alt="logo" width={50} height={50} draggable={false} className="w-10 h-10 md:w-12 md:h-12" />
                     </div>
-                    <div className="flex-shrink min-w-0">
+                    <div className="flex-shrink min-w-0 flex items-center gap-3">
+                        {/* Bridge Button - Desktop */}
+                        <button
+                            onClick={() => setIsBridgeModalOpen(true)}
+                            className="hidden md:flex items-center gap-2 px-4 py-2 rounded-lg border border-blue-500/60 bg-blue-500/10 hover:bg-blue-500/20 transition-all cursor-pointer"
+                            title="Bridge funds from other chains to Starknet"
+                        >
+                            {/* Bridge icon - arrows between chains */}
+                            <svg
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="rgb(59, 130, 246)"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                <path d="M7 16V4M7 4L3 8M7 4L11 8" />
+                                <path d="M17 8V20M17 20L21 16M17 20L13 16" />
+                            </svg>
+                            <span className="font-orbitron uppercase tracking-wide text-blue-400 text-xs md:text-sm">
+                                Bridge
+                            </span>
+                        </button>
+                        {/* Bridge Button - Mobile (icon only) */}
+                        <button
+                            onClick={() => setIsBridgeModalOpen(true)}
+                            className="flex md:hidden items-center justify-center w-10 h-10 rounded-lg border border-blue-500/60 bg-blue-500/10 hover:bg-blue-500/20 transition-all cursor-pointer"
+                            title="Bridge funds from other chains to Starknet"
+                        >
+                            <svg
+                                width="18"
+                                height="18"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="rgb(59, 130, 246)"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                            >
+                                <path d="M7 16V4M7 4L3 8M7 4L11 8" />
+                                <path d="M17 8V20M17 20L21 16M17 20L13 16" />
+                            </svg>
+                        </button>
                         {
                                 address ? (
                                 <div className="flex items-center rounded-lg border-2 border-[rgb(50,255,52)] overflow-hidden">
@@ -171,10 +219,22 @@ import { truncateAddress } from "../lib/utils/formatters";
                             ) : (
                                 <button
                                     onClick={handleConnect}
-                                    className="flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-[rgb(50,255,52)] bg-[rgb(50,255,52)]/10 hover:bg-[rgb(50,255,52)]/20 transition-all cursor-pointer"
+                                    className="group relative flex items-center gap-2.5 px-5 py-2.5 rounded-lg border-2 border-[rgb(50,255,52)] bg-[rgb(50,255,52)]/10 hover:bg-[rgb(50,255,52)]/30 hover:scale-105 transition-all cursor-pointer animate-subtle-pulse"
                                 >
-                                    <span className="font-orbitron uppercase tracking-wide text-[rgb(50,255,52)] text-xs md:text-sm">
-                                        Connect
+                                    {/* Glow effect - pointer-events-none ensures clicks pass through */}
+                                    <div className="absolute inset-0 rounded-lg bg-[rgb(50,255,52)]/20 blur-md opacity-50 group-hover:opacity-80 transition-opacity pointer-events-none" />
+                                    {/* Wallet icon */}
+                                    <svg
+                                        className="relative w-4 h-4 md:w-5 md:h-5 text-[rgb(50,255,52)]"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        strokeWidth="2"
+                                        viewBox="0 0 24 24"
+                                    >
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M21 12a2.25 2.25 0 00-2.25-2.25H15a3 3 0 11-6 0H5.25A2.25 2.25 0 003 12m18 0v6a2.25 2.25 0 01-2.25 2.25H5.25A2.25 2.25 0 013 18v-6m18 0V9M3 12V9m18 0a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 9m18 0V6a2.25 2.25 0 00-2.25-2.25H5.25A2.25 2.25 0 003 6v3" />
+                                    </svg>
+                                    <span className="relative font-orbitron uppercase tracking-wide text-[rgb(50,255,52)] text-sm md:text-base font-semibold">
+                                        Connect Wallet
                                     </span>
                                 </button>
                             )
@@ -182,5 +242,6 @@ import { truncateAddress } from "../lib/utils/formatters";
                     </div>
                 </div>
             </div>
+            </>
         )
     }

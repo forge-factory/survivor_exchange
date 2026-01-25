@@ -9,8 +9,26 @@ import BeastProfileCard from "./beast-profile-card";
 import BeastShareCard from "./beast-share-card";
 import AddressDisplay from "./address-display";
 import { useBeastOwner } from "../hooks/use-beast-owner";
-import { shareToTwitter, copyBeastLink } from "../lib/utils/share-utils";
+import { shareToTwitter, copyBeastLink, copyAuctionLink } from "../lib/utils/share-utils";
 import { extractBeastStats, generateBeastProfile } from "../lib/utils/tagline-generator";
+import { formatUSDSmart } from "../lib/utils";
+import InfoTooltip from "./info-tooltip";
+import CustomDropdown, { type DropdownOption } from "./custom-dropdown";
+import CountdownTimer from "./countdown-timer";
+
+/** Summit beast data for displaying badge */
+interface SummitBeastMatch {
+  nftTokenId: number;
+  summitBeast: {
+    tokenId: number;
+    blocksHeld: number;
+    prefix: string;
+    suffix: string;
+    beastName: string;
+    fullName: string;
+    rank: number;
+  };
+}
 
 // Combat Rating Gauge Component
 interface CombatRatingGaugeProps {
@@ -506,6 +524,27 @@ function useTilt(intensity: number = 15, enabled: boolean = true) {
   return { ref, style, glareStyle };
 }
 
+/** Auction data for bid/offer functionality */
+interface AuctionBidData {
+  startingPrice: number; // In USDC (already divided by 1e6)
+  highestBid?: number; // In USDC (already divided by 1e6)
+  status: string;
+  endTime: string;
+  isUserSeller: boolean;
+}
+
+/** Bid state from parent component */
+interface BidState {
+  bidAmount: string;
+  isSubmitting: boolean;
+  isSubmittingOffer: boolean;
+  hasActiveOffer: boolean;
+  account: boolean; // whether user is connected
+  paymentToken: string; // currently selected payment token address
+  tokenSymbol: string; // symbol of selected token (e.g., "USDC", "ETH")
+  insufficientFundsError?: string; // error message when user doesn't have enough funds
+}
+
 interface BeastDetailModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -514,6 +553,26 @@ interface BeastDetailModalProps {
   onNavigate: (index: number) => void;
   onSelect?: (tokenId: string) => void;
   isSelected?: boolean;
+  /** When viewing beasts in an auction context, copy the auction link instead of beast link */
+  auctionId?: string;
+  /** Auction data for displaying bid info and enabling bid/offer actions */
+  auctionBidData?: AuctionBidData;
+  /** Current bid state from parent */
+  bidState?: BidState;
+  /** Token options for payment selector */
+  tokenOptions?: DropdownOption[];
+  /** Callback when bid amount changes */
+  onBidAmountChange?: (amount: string) => void;
+  /** Callback when payment token changes */
+  onPaymentTokenChange?: (token: string) => void;
+  /** Callback to place a bid */
+  onPlaceBid?: () => void;
+  /** Callback to make an offer */
+  onMakeOffer?: () => void;
+  /** Callback to open wallet modal */
+  onOpenWallet?: () => void;
+  /** Summit beasts in this auction (for displaying badge) */
+  summitBeasts?: SummitBeastMatch[];
 }
 
 // Helper to format Unix timestamps to readable dates
@@ -538,6 +597,16 @@ export default function BeastDetailModal({
   onNavigate,
   onSelect,
   isSelected,
+  auctionId,
+  auctionBidData,
+  bidState,
+  tokenOptions,
+  onBidAmountChange,
+  onPaymentTokenChange,
+  onPlaceBid,
+  onMakeOffer,
+  onOpenWallet,
+  summitBeasts = [],
 }: BeastDetailModalProps) {
   const currentNft = nfts[currentIndex];
 
@@ -604,6 +673,41 @@ export default function BeastDetailModal({
     }
   }, [currentIndex, nfts.length, onNavigate]);
 
+  // Mobile swipe gesture support
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+  const minSwipeDistance = 50; // Minimum distance for a swipe
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  }, []);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+
+    const touchEndX = e.changedTouches[0].clientX;
+    const touchEndY = e.changedTouches[0].clientY;
+
+    const deltaX = touchEndX - touchStartX.current;
+    const deltaY = touchEndY - touchStartY.current;
+
+    // Only trigger swipe if horizontal movement is greater than vertical
+    // This prevents swipe from triggering during scroll
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > minSwipeDistance) {
+      if (deltaX > 0) {
+        // Swipe right -> go to previous
+        handlePrev();
+      } else {
+        // Swipe left -> go to next
+        handleNext();
+      }
+    }
+
+    touchStartX.current = null;
+    touchStartY.current = null;
+  }, [handlePrev, handleNext]);
+
   // 3D Tilt effect for the beast card - must be called before any early returns
   const { ref: tiltRef, style: tiltStyle, glareStyle } = useTilt(20, isOpen);
 
@@ -636,12 +740,15 @@ export default function BeastDetailModal({
     }
   }, [linkCopied]);
 
-  // Copy Link handler
+  // Copy Link handler - copies auction link when in auction context, otherwise beast link
   const handleCopyLink = useCallback(async () => {
     if (!currentNft) return;
-    const success = await copyBeastLink(currentNft.tokenId);
+    // If viewing in auction context, copy the auction link so recipient sees all beasts
+    const success = auctionId
+      ? await copyAuctionLink(auctionId)
+      : await copyBeastLink(currentNft.tokenId);
     setLinkCopied(success);
-  }, [currentNft]);
+  }, [currentNft, auctionId]);
 
   // Clear share result feedback after 4 seconds
   useEffect(() => {
@@ -710,47 +817,80 @@ export default function BeastDetailModal({
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-4xl bg-black/95 border-2 border-[rgb(50,255,52)]/60 rounded-2xl shadow-[0_0_40px_rgba(50,255,52,0.2)] my-auto"
+        className="relative w-full max-w-4xl max-h-[90vh] bg-black/95 border-2 border-[rgb(50,255,52)]/60 rounded-2xl shadow-[0_0_40px_rgba(50,255,52,0.2)] my-auto flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
         style={{ WebkitOverflowScrolling: 'touch' }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-[rgb(50,255,52)]/30">
-          <h2 className="text-xl font-orbitron uppercase tracking-wider text-white">
-            {currentNft.metadataName || `Beast #${currentNft.tokenId}`}
-          </h2>
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 md:px-6 py-3 md:py-4 border-b border-[rgb(50,255,52)]/30 gap-2 md:gap-0">
+          {/* Title row - with close button on mobile */}
+          <div className="flex items-center justify-between md:justify-start">
+            <h2 className="text-base md:text-xl font-orbitron uppercase tracking-wider text-white truncate max-w-[200px] md:max-w-none">
+              {currentNft.metadataName || `Beast #${currentNft.tokenId}`}
+            </h2>
+            {/* Close button - mobile only position */}
+            <button
+              onClick={onClose}
+              className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg border border-[rgb(50,255,52)]/40 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/20 transition-all"
+            >
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                <path
+                  d="M15 5L5 15M5 5L15 15"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </button>
+          </div>
+
+          {/* Navigation controls */}
+          <div className="flex items-center justify-center md:justify-end gap-2 md:gap-4">
             {/* Navigation - only show when more than 1 item */}
             {nfts.length > 1 && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-[rgb(186,255,188)]/70 font-orbitron">
-                  {currentIndex + 1} OF {nfts.length}
-                </span>
+              <div className="flex items-center gap-2 md:gap-3">
+                {/* Prev button */}
                 <button
                   onClick={handlePrev}
                   disabled={currentIndex === 0}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-[rgb(50,255,52)]/40 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                  title="Previous beast (← arrow key)"
+                  className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full border-2 border-[rgb(50,255,52)]/60 bg-[rgb(50,255,52)]/10 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/30 hover:border-[rgb(50,255,52)] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                 >
-                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                  <svg className="w-4 h-4 md:w-5 md:h-5" viewBox="0 0 20 20" fill="none">
                     <path
                       d="M12.5 15L7.5 10L12.5 5"
                       stroke="currentColor"
-                      strokeWidth="2"
+                      strokeWidth="2.5"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
                   </svg>
                 </button>
+                {/* Counter with swipe hint on mobile */}
+                <div className="flex flex-col items-center">
+                  <span className="text-xs md:text-sm text-white font-orbitron bg-[rgb(50,255,52)]/10 px-2 md:px-3 py-1 rounded-full border border-[rgb(50,255,52)]/30 whitespace-nowrap">
+                    {currentIndex + 1} OF {nfts.length}
+                  </span>
+                  {/* Mobile swipe hint */}
+                  <span className="text-[8px] text-[rgb(186,255,188)]/40 font-orbitron uppercase tracking-wider md:hidden mt-0.5">
+                    Swipe to navigate
+                  </span>
+                </div>
+                {/* Next button */}
                 <button
                   onClick={handleNext}
                   disabled={currentIndex === nfts.length - 1}
-                  className="w-8 h-8 flex items-center justify-center rounded-lg border border-[rgb(50,255,52)]/40 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/20 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                  title="Next beast (→ arrow key)"
+                  className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full border-2 border-[rgb(50,255,52)]/60 bg-[rgb(50,255,52)]/10 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/30 hover:border-[rgb(50,255,52)] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                 >
-                  <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                  <svg className="w-4 h-4 md:w-5 md:h-5" viewBox="0 0 20 20" fill="none">
                     <path
                       d="M7.5 15L12.5 10L7.5 5"
                       stroke="currentColor"
-                      strokeWidth="2"
+                      strokeWidth="2.5"
                       strokeLinecap="round"
                       strokeLinejoin="round"
                     />
@@ -758,10 +898,10 @@ export default function BeastDetailModal({
                 </button>
               </div>
             )}
-            {/* Close button */}
+            {/* Close button - desktop only position */}
             <button
               onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center rounded-lg border border-[rgb(50,255,52)]/40 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/20 transition-all"
+              className="hidden md:flex w-8 h-8 items-center justify-center rounded-lg border border-[rgb(50,255,52)]/40 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/20 transition-all"
             >
               <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
                 <path
@@ -777,7 +917,7 @@ export default function BeastDetailModal({
         </div>
 
         {/* Content */}
-        <div className="flex flex-col md:flex-row gap-6 p-6">
+        <div className="flex flex-col md:flex-row gap-6 p-6 flex-1 overflow-y-auto">
           {/* Beast Image with 3D Tilt Effect and Flip */}
           <div className="flex-shrink-0 flex flex-col items-center justify-start gap-2">
             <div
@@ -876,8 +1016,8 @@ export default function BeastDetailModal({
                 {/* Copy Link button (icon only) */}
                 <button
                   onClick={handleCopyLink}
-                  aria-label="Copy link to this beast"
-                  title={linkCopied ? "Copied!" : "Copy Link"}
+                  aria-label={auctionId ? "Copy link to this auction" : "Copy link to this beast"}
+                  title={linkCopied ? "Copied!" : (auctionId ? "Copy Auction Link" : "Copy Link")}
                   className={`flex items-center justify-center w-8 h-8 rounded-lg border transition-all ${
                     linkCopied
                       ? "border-green-500/60 bg-green-500/20 text-green-400"
@@ -1030,6 +1170,31 @@ export default function BeastDetailModal({
               );
             })()}
 
+            {/* Summit Badge - Show if this beast is in the summit leaderboard */}
+            {(() => {
+              // Find if current beast has a summit match
+              const tokenId = currentNft.tokenId.startsWith("0x") || currentNft.tokenId.startsWith("0X")
+                ? parseInt(currentNft.tokenId, 16)
+                : parseInt(currentNft.tokenId, 10);
+              const summitMatch = summitBeasts.find(m => m.nftTokenId === tokenId);
+
+              if (!summitMatch) return null;
+
+              return (
+                <div className="flex items-center gap-2">
+                  <span className="px-3 py-1.5 rounded-full bg-[rgb(255,215,0)]/20 border border-[rgb(255,215,0)]/40 text-[rgb(255,215,0)] font-orbitron uppercase tracking-wider text-xs flex items-center gap-1.5">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor">
+                      <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+                    </svg>
+                    Summit Top {summitMatch.summitBeast.rank}
+                  </span>
+                  <InfoTooltip
+                    content={`"${summitMatch.summitBeast.prefix} ${summitMatch.summitBeast.suffix}" held the Summit for ${summitMatch.summitBeast.blocksHeld.toLocaleString()} blocks`}
+                  />
+                </div>
+              );
+            })()}
+
             {/* Additional Attributes */}
             {currentNft.attributes && currentNft.attributes.length > 0 && (
               <div className="mt-2">
@@ -1104,6 +1269,211 @@ export default function BeastDetailModal({
                     </>
                   )}
                 </button>
+              </div>
+            )}
+
+            {/* Bid/Offer Section - Only show in auction context with active auction */}
+            {auctionId && auctionBidData && bidState && parseInt(auctionBidData.status) === 2 && (
+              <div className="mt-4 pt-4 border-t border-[rgb(50,255,52)]/20 sticky bottom-0 bg-black/95 pb-2 -mb-6 md:-mb-4 backdrop-blur-sm z-10">
+                {/* Price info */}
+                <div className="flex flex-wrap gap-3 mb-4">
+                  <div className="flex-1 min-w-[100px] rounded-lg border border-[rgb(50,255,52)]/20 bg-[rgb(50,255,52)]/5 px-3 py-2">
+                    <p className="text-[10px] font-orbitron uppercase tracking-wider text-[rgb(186,255,188)]/50">
+                      Reserve
+                    </p>
+                    <p className="text-sm font-orbitron text-white">
+                      {formatUSDSmart(auctionBidData.startingPrice)}
+                    </p>
+                  </div>
+                  <div className={`flex-1 min-w-[100px] rounded-lg border px-3 py-2 ${
+                    auctionBidData.highestBid && auctionBidData.highestBid > 0
+                      ? "border-[rgb(50,255,52)]/40 bg-[rgb(50,255,52)]/10"
+                      : "border-white/20 bg-white/5"
+                  }`}>
+                    <p className={`text-[10px] font-orbitron uppercase tracking-wider ${
+                      auctionBidData.highestBid && auctionBidData.highestBid > 0
+                        ? "text-[rgb(50,255,52)]"
+                        : "text-[rgb(186,255,188)]/50"
+                    }`}>
+                      Highest Bid
+                    </p>
+                    <p className={`text-sm font-orbitron ${
+                      auctionBidData.highestBid && auctionBidData.highestBid > 0
+                        ? "text-[rgb(50,255,52)]"
+                        : "text-white/50"
+                    }`}>
+                      {auctionBidData.highestBid && auctionBidData.highestBid > 0
+                        ? formatUSDSmart(auctionBidData.highestBid)
+                        : "Be first!"}
+                    </p>
+                  </div>
+                  {/* Countdown timer */}
+                  <div className="flex-1 min-w-[100px] rounded-lg border border-orange-500/30 bg-orange-500/10 px-3 py-2">
+                    <p className="text-[10px] font-orbitron uppercase tracking-wider text-orange-400/70">
+                      Ends In
+                    </p>
+                    <p className="text-sm font-orbitron text-orange-400">
+                      <CountdownTimer
+                        endTime={auctionBidData.endTime}
+                        status={auctionBidData.status}
+                      />
+                    </p>
+                  </div>
+                </div>
+
+                {/* Bid input and quick bid buttons */}
+                {!auctionBidData.isUserSeller && (
+                  <>
+                    {/* Token selector */}
+                    {tokenOptions && tokenOptions.length > 0 && onPaymentTokenChange && (
+                      <div className="flex flex-col gap-2 mb-3">
+                        <label className="text-[10px] font-orbitron uppercase tracking-wider text-[rgb(186,255,188)]/70">
+                          Pay With
+                        </label>
+                        <CustomDropdown
+                          id="modal-payment-token"
+                          value={bidState.paymentToken}
+                          onChange={onPaymentTokenChange}
+                          options={tokenOptions}
+                          variant="green"
+                          className="w-full"
+                        />
+                        {bidState.insufficientFundsError && (
+                          <p className="text-xs text-red-400">
+                            {bidState.insufficientFundsError}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex flex-col gap-2 mb-3">
+                      <label className="text-[10px] font-orbitron uppercase tracking-wider text-[rgb(186,255,188)]/70">
+                        Your Bid ({bidState.tokenSymbol || "USDC"})
+                      </label>
+                      <input
+                        type="number"
+                        inputMode="decimal"
+                        step="0.01"
+                        min="0"
+                        placeholder="Enter amount..."
+                        value={bidState.bidAmount}
+                        onChange={(e) => onBidAmountChange?.(e.target.value)}
+                        className="w-full rounded-lg border border-[rgb(50,255,52)]/40 bg-[rgb(50,255,52)]/5 px-3 py-2 text-sm font-orbitron text-white outline-none transition focus:border-[rgb(50,255,52)] focus:ring-2 focus:ring-[rgb(50,255,52)]/35 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                      />
+                    </div>
+
+                    {/* Quick bid buttons */}
+                    {(() => {
+                      const hasHighestBid = auctionBidData.highestBid !== undefined && auctionBidData.highestBid > 0;
+                      const basePrice = hasHighestBid
+                        ? auctionBidData.highestBid!
+                        : auctionBidData.startingPrice;
+                      const minBid = basePrice * 1.02;
+                      const midBid = basePrice * 1.5;
+                      const highBid = basePrice * 2;
+
+                      return (
+                        <div className="flex flex-wrap gap-1.5 mb-4">
+                          <button
+                            type="button"
+                            onClick={() => onBidAmountChange?.(minBid.toFixed(2))}
+                            className="px-2 py-1 text-[9px] font-orbitron uppercase tracking-wider rounded-md border border-[rgb(50,255,52)]/30 bg-[rgb(50,255,52)]/5 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/15 transition"
+                          >
+                            +2%
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onBidAmountChange?.(midBid.toFixed(2))}
+                            className="px-2 py-1 text-[9px] font-orbitron uppercase tracking-wider rounded-md border border-[rgb(50,255,52)]/30 bg-[rgb(50,255,52)]/5 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/15 transition"
+                          >
+                            1.5x
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onBidAmountChange?.(highBid.toFixed(2))}
+                            className="px-2 py-1 text-[9px] font-orbitron uppercase tracking-wider rounded-md border border-[rgb(50,255,52)]/30 bg-[rgb(50,255,52)]/5 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/15 transition"
+                          >
+                            2x
+                          </button>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Action buttons */}
+                    <div className="flex flex-col gap-2">
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          onClick={onPlaceBid}
+                          disabled={
+                            !bidState.account ||
+                            bidState.isSubmitting ||
+                            !bidState.bidAmount ||
+                            parseFloat(bidState.bidAmount) <= 0
+                          }
+                          className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-full px-4 h-10 text-xs font-orbitron uppercase tracking-[0.12em] transition whitespace-nowrap ${
+                            bidState.account &&
+                            !bidState.isSubmitting &&
+                            bidState.bidAmount &&
+                            parseFloat(bidState.bidAmount) > 0
+                              ? "bg-[rgb(50,255,52)] text-black font-bold hover:cursor-pointer hover:bg-[rgb(40,220,42)] shadow-[0_0_12px_rgba(50,255,52,0.4)]"
+                              : "border border-white/12 text-[rgb(186,255,188)]/45 cursor-not-allowed"
+                          }`}
+                        >
+                          <span>{bidState.isSubmitting ? "..." : "Place Bid"}</span>
+                          {!bidState.isSubmitting && (
+                            <InfoTooltip content="Compete in the auction. Your bid must be higher than the current highest bid." />
+                          )}
+                        </button>
+                        {!bidState.hasActiveOffer && (
+                          <button
+                            type="button"
+                            onClick={onMakeOffer}
+                            disabled={
+                              !bidState.account ||
+                              bidState.isSubmittingOffer ||
+                              !bidState.bidAmount ||
+                              parseFloat(bidState.bidAmount) <= 0
+                            }
+                            className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-full px-4 h-10 text-xs font-orbitron uppercase tracking-[0.12em] transition whitespace-nowrap ${
+                              bidState.account &&
+                              !bidState.isSubmittingOffer &&
+                              bidState.bidAmount &&
+                              parseFloat(bidState.bidAmount) > 0
+                                ? "border border-blue-500 bg-blue-500/10 text-blue-500 hover:cursor-pointer hover:bg-blue-500 hover:text-black"
+                                : "border border-white/12 text-[rgb(186,255,188)]/45 cursor-not-allowed"
+                            }`}
+                          >
+                            <span>{bidState.isSubmittingOffer ? "..." : "Make Offer"}</span>
+                            {!bidState.isSubmittingOffer && (
+                              <InfoTooltip content="Make a direct buyout offer to the seller. If accepted, the auction ends immediately." />
+                            )}
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Connect wallet prompt */}
+                      {!bidState.account && (
+                        <button
+                          type="button"
+                          onClick={onOpenWallet}
+                          className="text-xs text-center text-[rgb(50,255,52)]/80 font-orbitron animate-pulse hover:text-[rgb(50,255,52)] hover:underline cursor-pointer transition-colors"
+                        >
+                          Connect wallet to place a bid →
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* Seller notice */}
+                {auctionBidData.isUserSeller && (
+                  <div className="text-center py-3 rounded-lg border border-yellow-500/30 bg-yellow-500/10">
+                    <p className="text-xs font-orbitron text-yellow-400">
+                      You are the seller of this auction
+                    </p>
+                  </div>
+                )}
               </div>
             )}
           </div>

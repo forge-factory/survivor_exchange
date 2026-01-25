@@ -1,5 +1,6 @@
 import React, { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import { useAccount, useExplorer, useProvider } from "@starknet-react/core";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import MonsterCollectionCard from "./monster-collection-card";
 import Pagination from "./pagination";
@@ -10,6 +11,7 @@ import CustomDropdown from "./custom-dropdown";
 import InfoTooltip from "./info-tooltip";
 import BeastDetailModal from "./beast-detail-modal";
 import AddressDisplay from "./address-display";
+import CountdownTimer from "./countdown-timer";
 import { useWalletModal } from "../providers/wallet-modal-provider";
 import type { AuctionItem } from "../lib/types";
 import { AuctionWithNFTs } from "../hooks/use-auctions";
@@ -116,6 +118,7 @@ export default function Bids({
   const explorer = useExplorer();
   const provider = useProvider();
   const { openWalletModal } = useWalletModal();
+  const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [txnHash, setTxnHash] = useState<string | undefined>();
   const [insufficientFundsError, setInsufficientFundsError] = useState<
@@ -152,6 +155,7 @@ export default function Bids({
     priceSort: "",
     tokenIdSort: "",
     summitTop15: "",
+    timeSort: "ending-soon", // Default to ending soon for urgency
   });
 
   const [localCurrentPage, setLocalCurrentPage] = useState(currentPage);
@@ -197,6 +201,49 @@ export default function Bids({
       }
       // Filter to only auctions containing summit beasts (by token ID or prefix+suffix)
       result = result.filter(auction => auctionHasSummitBeast(auction));
+    }
+
+    // Apply time-based sorting
+    if (filters.timeSort === "ending-soon") {
+      const now = Math.floor(Date.now() / 1000);
+      result = [...result].sort((a, b) => {
+        const getEndTime = (auction: AuctionWithNFTs) => {
+          const endTimeStr = auction.end_time || "0";
+          return endTimeStr.startsWith("0x") || endTimeStr.startsWith("0X")
+            ? parseInt(endTimeStr, 16)
+            : parseInt(endTimeStr, 10);
+        };
+        const isActive = (auction: AuctionWithNFTs) => {
+          const status = parseInt(auction.status);
+          const endTime = getEndTime(auction);
+          return status === 2 && endTime > now;
+        };
+
+        const endTimeA = getEndTime(a);
+        const endTimeB = getEndTime(b);
+        const activeA = isActive(a);
+        const activeB = isActive(b);
+
+        // Active auctions come first, then sort by ending soonest
+        if (activeA && !activeB) return -1;
+        if (!activeA && activeB) return 1;
+
+        // Both active or both inactive: sort by ending soonest (ascending)
+        return endTimeA - endTimeB;
+      });
+    } else if (filters.timeSort === "newest") {
+      result = [...result].sort((a, b) => {
+        const getEndTime = (auction: AuctionWithNFTs) => {
+          const endTimeStr = auction.end_time || "0";
+          return endTimeStr.startsWith("0x") || endTimeStr.startsWith("0X")
+            ? parseInt(endTimeStr, 16)
+            : parseInt(endTimeStr, 10);
+        };
+        const endTimeA = getEndTime(a);
+        const endTimeB = getEndTime(b);
+        // Sort by newest first (descending)
+        return endTimeB - endTimeA;
+      });
     }
 
     return result;
@@ -263,8 +310,9 @@ export default function Bids({
         : undefined;
 
       return {
-        id: auction.auction_id,
+        id: String(auction.auction_id),
         name: truncateAuctionName(auction.name),
+        fullName: auction.name, // Original untruncated name for tooltip
         totalMonsters: parseInt(auction.item_count) || 0,
         startingPrice,
         highestBid,
@@ -304,16 +352,30 @@ export default function Bids({
     if (selectedCollectionId && detailRef.current) {
       // Small delay to ensure the DOM has rendered the details
       const timer = setTimeout(() => {
-        detailRef.current?.scrollIntoView({
-          behavior: "smooth",
-          block: "center",
-        });
+        // On mobile (< 768px), scroll to show the bid actions area
+        const isMobile = window.innerWidth < 768;
+        if (isMobile && bidActionsRef.current) {
+          bidActionsRef.current.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        } else {
+          detailRef.current?.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        }
       }, 100);
       return () => clearTimeout(timer);
     }
   }, [selectedCollectionId]);
+
+  // Track if we've auto-opened from URL to avoid re-triggering
+  const hasAutoOpenedFromUrl = useRef(false);
+
   const nftCarouselRef = useRef<HTMLDivElement>(null);
   const detailRef = useRef<HTMLDivElement>(null);
+  const bidActionsRef = useRef<HTMLDivElement>(null); // Ref for bid button area on mobile
   const [canScrollLeft, setCanScrollLeft] = useState(false);
   const [canScrollRight, setCanScrollRight] = useState(false);
   const [countdown, setCountdown] = useState<{
@@ -378,20 +440,55 @@ export default function Bids({
   );
 
   // Get NFTs for the selected auction (for modal)
+  // When opened from URL, look up directly from auctions to avoid filter timing issues
   const selectedAuctionNfts = useMemo(() => {
     if (!selectedCollectionId) return [];
-    const auction = paginatedFilteredAuctions.find(
-      (a) => a.auction_id === selectedCollectionId,
+    // First try filtered auctions (normal flow)
+    const filteredAuction = paginatedFilteredAuctions.find(
+      (a) => String(a.auction_id) === selectedCollectionId,
     );
-    return auction?.nfts || [];
-  }, [selectedCollectionId, paginatedFilteredAuctions]);
+    if (filteredAuction?.nfts?.length) {
+      return filteredAuction.nfts;
+    }
+    // Fallback: look up directly from auctions prop (for URL-based opening)
+    const directAuction = auctions.find(
+      (a) => String(a.auction_id) === selectedCollectionId,
+    );
+    return directAuction?.nfts || [];
+  }, [selectedCollectionId, paginatedFilteredAuctions, auctions]);
+
+  // Track if we need to open modal after NFTs load
+  const shouldOpenModalOnNftsLoad = useRef(false);
+
+  // Auto-select auction from URL and prepare to open modal
+  // Wait for loading to complete before trying to auto-select
+  useEffect(() => {
+    if (token && !hasAutoOpenedFromUrl.current && !loading && auctions.length > 0) {
+      // Compare as strings to handle both number and string auction_id formats
+      const targetAuction = auctions.find((a) => String(a.auction_id) === token);
+      if (targetAuction) {
+        hasAutoOpenedFromUrl.current = true;
+        setSelectedCollectionId(String(targetAuction.auction_id));
+        shouldOpenModalOnNftsLoad.current = true;
+      }
+    }
+  }, [token, auctions, loading]);
+
+  // Open modal once NFTs are available
+  useEffect(() => {
+    if (shouldOpenModalOnNftsLoad.current && selectedAuctionNfts.length > 0) {
+      shouldOpenModalOnNftsLoad.current = false;
+      setSelectedBeastIndex(0);
+      setIsBeastModalOpen(true);
+    }
+  }, [selectedAuctionNfts]);
 
   // Prepare beast metadata for skull rewards hook
   const selectedAuctionBeastData = useMemo(() => {
     if (!selectedCollectionId) return [];
 
     const auction = paginatedFilteredAuctions.find(
-      (a) => a.auction_id === selectedCollectionId,
+      (a) => String(a.auction_id) === selectedCollectionId,
     );
     if (!auction?.nfts) return [];
 
@@ -1451,7 +1548,7 @@ export default function Bids({
 
     // Find the auction to get feeToken and currentBid
     const auction = paginatedFilteredAuctions.find(
-      (a) => a.auction_id === selectedCollectionId,
+      (a) => String(a.auction_id) === selectedCollectionId,
     );
     if (!auction) {
       console.error("Auction not found");
@@ -1673,7 +1770,15 @@ export default function Bids({
     }
 
     setSelectedCollectionId(collection.id);
-    setBidAmountToken("");
+
+    // Pre-fill bid amount with minimum valid bid (2% above highest bid or reserve)
+    const hasHighestBid = collection.highestBid !== undefined && collection.highestBid > 0;
+    const basePrice = hasHighestBid
+      ? collection.highestBid!
+      : collection.startingPrice / 1e6;
+    const minBid = (basePrice * 1.02).toFixed(2);
+    setBidAmountToken(minBid);
+
     setTxnHash(undefined);
     setOfferTxnHash(undefined);
     setSettleTxnHash(undefined);
@@ -1693,6 +1798,28 @@ export default function Bids({
       } else {
         updateSelection(collection);
       }
+    },
+    [selectedCollectionId, updateSelection],
+  );
+
+  const handleQuickBid = useCallback(
+    (collection: Collection) => {
+      // Select the auction if not already selected
+      if (selectedCollectionId !== collection.id) {
+        updateSelection(collection);
+      }
+      // Wait for the detail view to render, then scroll and highlight
+      setTimeout(() => {
+        if (detailRef.current) {
+          detailRef.current.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        }
+        // Flash the bid input to draw attention
+        setBidInputHighlight(true);
+        setTimeout(() => setBidInputHighlight(false), 1500);
+      }, 100);
     },
     [selectedCollectionId, updateSelection],
   );
@@ -1737,12 +1864,33 @@ export default function Bids({
 
     if (collections.length === 0) {
       return (
-        <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-center gap-4 px-4 py-12">
-          <p className="text-[rgb(186,255,188)]/70">
-            {auctions.length === 0
-              ? "No auctions available."
-              : "No auctions match your filters. Try adjusting your search criteria."}
-          </p>
+        <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-center gap-6 px-4 py-12">
+          <div className="w-20 h-20 rounded-full bg-[rgb(50,255,52)]/10 flex items-center justify-center">
+            <svg className="w-10 h-10 text-[rgb(50,255,52)]/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+            </svg>
+          </div>
+          <div className="text-center">
+            {auctions.length === 0 ? (
+              <>
+                <p className="text-lg text-[rgb(186,255,188)]/70 mb-2">
+                  No active auctions right now
+                </p>
+                <p className="text-sm text-[rgb(186,255,188)]/50 max-w-md">
+                  Be the first to list your beasts! Switch to the &quot;Auction your collection&quot; tab to create an auction.
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-lg text-[rgb(186,255,188)]/70 mb-2">
+                  No auctions match your filters
+                </p>
+                <p className="text-sm text-[rgb(186,255,188)]/50 max-w-md">
+                  Try adjusting your search criteria or clear filters to see all available auctions.
+                </p>
+              </>
+            )}
+          </div>
         </div>
       );
     }
@@ -1765,7 +1913,7 @@ export default function Bids({
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 w-full">
           {collections.map((collection, index) => {
             const auction = paginatedFilteredAuctions.find(
-              (a) => a.auction_id === collection.id,
+              (a) => String(a.auction_id) === collection.id,
             );
             const nfts = auction?.nfts || [];
             const isSelected = collection.id === selectedCollectionId;
@@ -1779,6 +1927,7 @@ export default function Bids({
                   collection={collection}
                   isSelected={isSelected}
                   onSelect={() => handleSelectCollection(collection)}
+                  onQuickBid={() => handleQuickBid(collection)}
                   nfts={nfts}
                 />
                 {showDetailAfterThis && (
@@ -1797,7 +1946,7 @@ export default function Bids({
       if (!selectedCollection) return null;
 
       const auction = paginatedFilteredAuctions.find(
-        (a) => a.auction_id === selectedCollection.id,
+        (a) => String(a.auction_id) === selectedCollection.id,
       );
       const isUserSeller =
         address && auction?.seller
@@ -2404,7 +2553,7 @@ export default function Bids({
                   </div>
                   {(() => {
                     const auction = paginatedFilteredAuctions.find(
-                      (a) => a.auction_id === selectedCollection.id,
+                      (a) => String(a.auction_id) === selectedCollection.id,
                     );
                     const nfts = auction?.nfts || [];
 
@@ -2560,7 +2709,7 @@ export default function Bids({
                   </div>
                   {(() => {
                     const auction = paginatedFilteredAuctions.find(
-                      (a) => a.auction_id === selectedCollection.id,
+                      (a) => String(a.auction_id) === selectedCollection.id,
                     );
                     const nfts = auction?.nfts || [];
 
@@ -2628,7 +2777,7 @@ export default function Bids({
                   })()}
                 </div>
 
-                <div className="flex flex-col gap-2 w-full max-w-full md:max-w-[550px]">
+                <div ref={bidActionsRef} className="flex flex-col gap-2 w-full max-w-full md:max-w-[550px]">
                   <div className="flex flex-row gap-2 md:gap-3 w-full">
                     <button
                       type="button"
@@ -2859,6 +3008,61 @@ export default function Bids({
                 )}
               </div>
             </div>
+
+            {/* Mobile Sticky CTA - Fixed at bottom on mobile */}
+            <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 p-3 bg-black/95 backdrop-blur-md border-t border-[rgb(50,255,52)]/30 shadow-[0_-4px_20px_rgba(0,0,0,0.5)]">
+              <div className="flex items-center justify-between gap-3 max-w-6xl mx-auto">
+                <div className="flex-1 min-w-0">
+                  <p className="text-[10px] font-orbitron uppercase tracking-wider text-[rgb(186,255,188)]/70 truncate">
+                    {selectedCollection.name}
+                  </p>
+                  <p className="text-sm font-orbitron text-white">
+                    {(() => {
+                      // Calculate suggested bid: 2% above current highest bid or reserve
+                      const basePrice = selectedCollection.highestBid && selectedCollection.highestBid > 0
+                        ? selectedCollection.highestBid
+                        : selectedCollection.startingPrice / 1e6;
+                      const suggestedBid = basePrice * 1.02;
+                      return formatUSDSmart(suggestedBid);
+                    })()}
+                    <span className="text-[10px] text-[rgb(186,255,188)]/50 ml-1">
+                      suggested bid
+                    </span>
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <CountdownTimer
+                    endTime={selectedCollection.endTime}
+                    status={selectedCollection.status}
+                    showUrgency={true}
+                    size="sm"
+                    className="text-xs font-orbitron"
+                  />
+                  {account ? (
+                    <button
+                      type="button"
+                      onClick={handlePlaceBid}
+                      disabled={!isBidValid || isSubmitting || isUserSeller}
+                      className={`px-4 py-2.5 rounded-lg font-orbitron font-bold text-xs uppercase tracking-wider transition ${
+                        isBidValid && !isSubmitting && !isUserSeller
+                          ? "bg-[rgb(50,255,52)] text-black"
+                          : "bg-white/20 text-white/50"
+                      }`}
+                    >
+                      {isSubmitting ? "..." : "Bid Now"}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={openWalletModal}
+                      className="px-4 py-2.5 rounded-lg bg-[rgb(50,255,52)] text-black font-orbitron font-bold text-xs uppercase tracking-wider animate-subtle-pulse"
+                    >
+                      Connect
+                    </button>
+                  )}
+                </div>
+              </div>
+            </div>
           </section>
         </div>
       );
@@ -2881,15 +3085,96 @@ export default function Bids({
 
   return (
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4">
+      {/* Toast notification for errors */}
+      {insufficientFundsError && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[100] animate-slide-down">
+          <div className="flex items-center gap-3 px-5 py-3 rounded-xl bg-red-500/95 backdrop-blur-md border border-red-400 shadow-[0_4px_20px_rgba(239,68,68,0.4)]">
+            <svg className="w-5 h-5 text-white flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-sm font-semibold text-white">{insufficientFundsError}</p>
+            <button
+              type="button"
+              onClick={() => setInsufficientFundsError(null)}
+              className="ml-2 text-white/80 hover:text-white transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+        </div>
+      )}
+
       <Filters token={token} filters={filters} onFiltersChange={setFilters} summitListedCount={summitListedCount} />
       {renderContent()}
 
       <BeastDetailModal
         isOpen={isBeastModalOpen}
-        onClose={() => setIsBeastModalOpen(false)}
+        onClose={() => {
+          setIsBeastModalOpen(false);
+          // Remove auction param from URL if it was opened from URL
+          if (token && hasAutoOpenedFromUrl.current) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("auction");
+            router.push(url.pathname + url.search, { scroll: false });
+          }
+        }}
         nfts={selectedAuctionNfts}
         currentIndex={selectedBeastIndex}
         onNavigate={setSelectedBeastIndex}
+        auctionId={selectedCollectionId}
+        auctionBidData={selectedCollection ? {
+          startingPrice: selectedCollection.startingPrice / 1e6,
+          highestBid: selectedCollection.highestBid,
+          status: selectedCollection.status,
+          endTime: selectedCollection.endTime,
+          isUserSeller: (() => {
+            const auction = auctions.find((a) => String(a.auction_id) === selectedCollectionId);
+            if (!address || !auction?.seller) return false;
+            const userAddress = normalizeContractAddress(address).toLowerCase();
+            const sellerAddress = normalizeContractAddress(auction.seller).toLowerCase();
+            return userAddress === sellerAddress;
+          })(),
+        } : undefined}
+        bidState={{
+          bidAmount: bidAmountToken,
+          isSubmitting,
+          isSubmittingOffer,
+          hasActiveOffer: !!userOffer,
+          account: !!account,
+          paymentToken,
+          tokenSymbol: SUPPORTED_TOKENS.find(t => t.address.toLowerCase() === paymentToken.toLowerCase())?.symbol || "USDC",
+          insufficientFundsError: insufficientFundsError || undefined,
+        }}
+        tokenOptions={SUPPORTED_TOKENS.map((token) => {
+          const balanceInfo =
+            address && tokenBalances[token.address] !== undefined
+              ? tokenBalances[token.address]
+              : null;
+
+          let balanceDisplay: string;
+          if (!address) {
+            balanceDisplay = "—";
+          } else if (!balanceInfo) {
+            balanceDisplay = "...";
+          } else {
+            balanceDisplay = balanceInfo.usdValue || formatUSD(0);
+          }
+
+          return {
+            value: token.address,
+            label: token.symbol,
+            balance: balanceDisplay,
+            logo: tokenLogos[token.address],
+          };
+        })}
+        onBidAmountChange={setBidAmountToken}
+        onPaymentTokenChange={setPaymentToken}
+        onPlaceBid={handlePlaceBid}
+        onMakeOffer={handleMakeOffer}
+        onOpenWallet={openWalletModal}
+        summitBeasts={auctionSummitBeasts}
       />
     </div>
   );
