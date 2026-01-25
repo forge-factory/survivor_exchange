@@ -5,7 +5,7 @@ import { GRAPHQL_QUERY_LIMIT } from "../constants";
 // Reduced limits from 1000000 - prevents massive payloads
 export const AUCTIONS_QUERY = gql`
   query MyQuery {
-    bm019AuctionItemModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
+    bm020AuctionItemModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
       edges {
         node {
           auction_id
@@ -18,7 +18,7 @@ export const AUCTIONS_QUERY = gql`
         }
       }
     }
-    bm019AuctionModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
+    bm020AuctionModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
       edges {
         node {
           auction_id
@@ -34,7 +34,7 @@ export const AUCTIONS_QUERY = gql`
         }
       }
     }
-    bm019BidModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
+    bm020BidModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
       edges {
         node {
           auction_id
@@ -43,7 +43,7 @@ export const AUCTIONS_QUERY = gql`
         }
       }
     }
-    bm019OfferModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
+    bm020OfferModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
       edges {
         node {
           auction_id
@@ -64,7 +64,7 @@ export async function fetchAuctions(): Promise<AuctionsResponse> {
 
 export const MY_LISTINGS_QUERY = gql`
   query MyListings($seller: String!) {
-    bm019AuctionModels(
+    bm020AuctionModels(
       where: { seller: $seller }
       order: { direction: DESC, field: AUCTION_ID }
     ) {
@@ -83,7 +83,7 @@ export const MY_LISTINGS_QUERY = gql`
         }
       }
     }
-    bm019OfferModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
+    bm020OfferModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
       edges {
         node {
           auction_id
@@ -126,7 +126,7 @@ export const CONSOLIDATED_QUERY = gql`
         }
       }
     }
-    auctionItems: bm019AuctionItemModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
+    auctionItems: bm020AuctionItemModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
       edges {
         node {
           auction_id
@@ -139,7 +139,7 @@ export const CONSOLIDATED_QUERY = gql`
         }
       }
     }
-    auctions: bm019AuctionModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
+    auctions: bm020AuctionModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
       edges {
         node {
           auction_id
@@ -155,7 +155,7 @@ export const CONSOLIDATED_QUERY = gql`
         }
       }
     }
-    myListings: bm019AuctionModels(where: {seller: $seller}, order: {direction: DESC, field: AUCTION_ID}) @skip(if: $skipListings) {
+    myListings: bm020AuctionModels(where: {seller: $seller}, order: {direction: DESC, field: AUCTION_ID}) @skip(if: $skipListings) {
       edges {
         node {
           auction_id

@@ -1,9 +1,9 @@
 export const MARKETPLACE_GRAPHQL_ENDPOINT =
-  "https://api.cartridge.gg/x/bm/torii/graphql";
+  "https://api.cartridge.gg/x/lax/torii/graphql";
 export const BEASTS_GRAPHQL_ENDPOINT =
   "https://api.cartridge.gg/x/pg-beasts/torii/graphql";
 
-export const IMAGE_BASE_URL = "https://api.cartridge.gg/x/bm/torii";
+export const IMAGE_BASE_URL = "https://api.cartridge.gg/x/lax/torii";
 
 export const MAINNET_RPC_URL = "https://api.cartridge.gg/x/starknet/mainnet";
 export const SEPOLIA_RPC_URL = "https://api.cartridge.gg/x/starknet/sepolia";
@@ -54,7 +54,8 @@ export const STARKNET_MAINNET_CHAIN_ID = "0x534e5f4d41494e";
 export const STARKNET_MAINNET_CHAIN_ID_DECIMAL = "23448594291968334";
 
 // Summit game Torii endpoint for fetching SKULL token data
-export const SUMMIT_TORII_URL = "https://api.cartridge.gg/x/pg-mainnet-10/torii";
+export const SUMMIT_TORII_URL =
+  "https://api.cartridge.gg/x/pg-mainnet-10/torii";
 export const SUMMIT_NAMESPACE = "summit_relayer_6";
 export const LOOT_SURVIVOR_NAMESPACE = "ls_0_0_9";
 

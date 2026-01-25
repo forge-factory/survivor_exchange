@@ -47,7 +47,7 @@ export function useAuctions() {
 
   const allAuctions: Auction[] = useMemo(() => {
     const auctions =
-      data?.bm019AuctionModels?.edges?.map((edge) => {
+      data?.bm020AuctionModels?.edges?.map((edge) => {
         const auction = edge.node;
         // Normalize addresses from GraphQL response
         return {
@@ -76,12 +76,12 @@ export function useAuctions() {
   }, [data]);
 
   const allAuctionItems: AuctionItem[] = useMemo(() => {
-    return data?.bm019AuctionItemModels?.edges?.map((edge) => edge.node) || [];
+    return data?.bm020AuctionItemModels?.edges?.map((edge) => edge.node) || [];
   }, [data]);
 
   const allBids: Bid[] = useMemo(() => {
     return (
-      data?.bm019BidModels?.edges?.map((edge) => {
+      data?.bm020BidModels?.edges?.map((edge) => {
         const bid = edge.node;
         return {
           ...bid,
@@ -95,7 +95,7 @@ export function useAuctions() {
 
   const allOffers: Offer[] = useMemo(() => {
     return (
-      data?.bm019OfferModels?.edges?.map((edge) => {
+      data?.bm020OfferModels?.edges?.map((edge) => {
         const offer = edge.node;
         return {
           ...offer,
