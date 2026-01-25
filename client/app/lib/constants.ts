@@ -1,7 +1,7 @@
 export const MARKETPLACE_GRAPHQL_ENDPOINT =
   "https://api.cartridge.gg/x/lax/torii/graphql";
 export const BEASTS_GRAPHQL_ENDPOINT =
-  "https://api.cartridge.gg/x/pg-beasts/torii/graphql";
+  "https://api.cartridge.gg/x/pg-mainnet-10/torii/graphql";
 
 export const IMAGE_BASE_URL = "https://api.cartridge.gg/x/lax/torii";
 
@@ -9,11 +9,43 @@ export const MAINNET_RPC_URL = "https://api.cartridge.gg/x/starknet/mainnet";
 export const SEPOLIA_RPC_URL = "https://api.cartridge.gg/x/starknet/sepolia";
 
 export const AUCTION_CONTRACT_ADDRESS =
-  "0x02dfedce0383bfd4b5a5dbf2693220841aaa3a1ebf639919a76dbe09a5ff41cb";
+  "0x014bc241fbd79754bc34f6ed3fca136ac3d9b026211b83600bcef4f95d6542ce";
 export const VAULT_CONTRACT_ADDRESS =
-  "0x02aa15e266a17d519301d5e658562ae8fe5a483be47660be42e67588b9ac29cd";
+  "0x00f0e67020f2d4c88817bdb5d2c0664e8682fc8867312fae848fe1339a77006a";
 export const BEASTS_NFT_CONTRACT_ADDRESS =
   "0x046da8955829adf2bda310099a0063451923f02e648cf25a1203aac6335cf0e4";
+export const ADVENTURER_NFT_CONTRACT_ADDRESS =
+  "0x036017e69d21d6d8c13e266eabb73ef1f1d02722d86bdcabe5f168f8e549d3cd";
+
+// Collection types for multi-collection support
+export type CollectionType = "beasts" | "adventurers";
+
+export interface CollectionConfig {
+  id: CollectionType;
+  name: string;
+  contractAddress: string;
+  singularName: string;
+  pluralName: string;
+}
+
+export const COLLECTIONS: Record<CollectionType, CollectionConfig> = {
+  beasts: {
+    id: "beasts",
+    name: "Beasts",
+    contractAddress: BEASTS_NFT_CONTRACT_ADDRESS,
+    singularName: "monster",
+    pluralName: "monsters",
+  },
+  adventurers: {
+    id: "adventurers",
+    name: "Adventurers",
+    contractAddress: ADVENTURER_NFT_CONTRACT_ADDRESS,
+    singularName: "adventurer",
+    pluralName: "adventurers",
+  },
+};
+
+export const DEFAULT_COLLECTION: CollectionType = "beasts";
 
 export const DEFAULT_PAGE_SIZE = 12;
 

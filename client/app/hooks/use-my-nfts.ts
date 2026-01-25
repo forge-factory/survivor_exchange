@@ -9,6 +9,7 @@ import { DEFAULT_POLL_INTERVAL, BEASTS_NFT_CONTRACT_ADDRESS } from '../lib/const
 
 interface UseMyNFTsOptions {
   address?: string;
+  collectionAddress?: string;
 }
 
 export function useMyNFTs(options?: UseMyNFTsOptions) {
@@ -16,6 +17,9 @@ export function useMyNFTs(options?: UseMyNFTsOptions) {
   const rawTargetAddress = options?.address || accountAddress;
   // Normalize address before using in query
   const targetAddress = rawTargetAddress ? normalizeContractAddress(rawTargetAddress) : undefined;
+
+  // Use provided collection address or default to BEASTS
+  const collectionAddress = options?.collectionAddress || BEASTS_NFT_CONTRACT_ADDRESS;
 
   const { data, loading, error } = useQuery<MyNFTsResponse>(MY_NFTS_QUERY, {
     variables: { accountAddress: targetAddress },
@@ -35,14 +39,14 @@ export function useMyNFTs(options?: UseMyNFTsOptions) {
         // Normalize contract addresses from GraphQL
         contractAddress: nft.contractAddress ? normalizeContractAddress(nft.contractAddress) : nft.contractAddress,
       })) || [];
-    
-    const targetContractNormalized = normalizeContractAddress(BEASTS_NFT_CONTRACT_ADDRESS).toLowerCase();
+
+    const targetContractNormalized = normalizeContractAddress(collectionAddress).toLowerCase();
     return allNFTs.filter((nft) => {
       if (!nft.contractAddress) return false;
       const nftContractNormalized = normalizeContractAddress(nft.contractAddress).toLowerCase();
       return nftContractNormalized === targetContractNormalized;
     });
-  }, [data]);
+  }, [data, collectionAddress]);
 
   const nfts: FormattedNFT[] = useMemo(() => formatNFTs(rawNFTs), [rawNFTs]);
 

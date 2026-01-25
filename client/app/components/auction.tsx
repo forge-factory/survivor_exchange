@@ -2,6 +2,8 @@ import { useCallback, useMemo, useState, useEffect } from "react";
 import { useAccount, useExplorer } from "@starknet-react/core";
 import { byteArray } from "starknet";
 import MonsterCard from "./monster-card";
+import AdventurerCard from "./adventurer-card";
+import CollectionSelector from "./collection-selector";
 import Pagination from "./pagination";
 import Filters, { FilterState } from "./filters";
 import AuctionSkeleton from "./auction-skeleton";
@@ -9,18 +11,35 @@ import CustomDropdown from "./custom-dropdown";
 import BeastDetailModal from "./beast-detail-modal";
 import type { FormattedNFT } from "../lib/types";
 import { applyFiltersToNFTs } from "../lib/filter-utils";
-import { AUCTION_CONTRACT_ADDRESS, DEFAULT_PAGE_SIZE, DEFAULT_AUCTION_DURATION_MINUTES, SUPPORTED_TOKENS, USDC_ADDRESS, BEASTS_NFT_CONTRACT_ADDRESS, MAX_AUCTION_NFT_SELECTION } from "../lib/constants";
+import { AUCTION_CONTRACT_ADDRESS, DEFAULT_PAGE_SIZE, DEFAULT_AUCTION_DURATION_MINUTES, SUPPORTED_TOKENS, USDC_ADDRESS, MAX_AUCTION_NFT_SELECTION, COLLECTIONS, CollectionType, DEFAULT_COLLECTION } from "../lib/constants";
 import { fetchTokens } from "@avnu/avnu-sdk";
 import { normalizeContractAddress } from "../lib/utils/normalization";
 import { useSummitLeaderboard, findMatchingSummitBeast } from "../hooks/use-summit-leaderboard";
+import { useMyNFTs } from "../hooks/use-my-nfts";
+import { useMyAdventurerNFTs } from "../hooks/use-my-adventurer-nfts";
 
 interface AuctionProps {
-    nfts: FormattedNFT[];
-    loading: boolean;
-    error: Error | null;
+    nfts?: FormattedNFT[];
+    loading?: boolean;
+    error?: Error | null;
 }
 
-export default function Auction({ nfts, loading, error }: AuctionProps) {
+export default function Auction({ nfts: externalNfts, loading: externalLoading, error: externalError }: AuctionProps) {
+    const [selectedCollection, setSelectedCollection] = useState<CollectionType>(DEFAULT_COLLECTION);
+    const collectionConfig = COLLECTIONS[selectedCollection];
+
+    // Fetch BEASTS NFTs via GraphQL
+    const { nfts: beastsNfts, loading: beastsLoading, error: beastsError } = useMyNFTs({
+        collectionAddress: collectionConfig.contractAddress,
+    });
+
+    // Fetch Adventurer NFTs via SQL (GraphQL doesn't index them)
+    const { nfts: adventurerNfts, loading: adventurerLoading, error: adventurerError } = useMyAdventurerNFTs();
+
+    // Use appropriate NFTs based on selected collection
+    const nfts = selectedCollection === "beasts" ? beastsNfts : adventurerNfts;
+    const loading = selectedCollection === "beasts" ? beastsLoading : adventurerLoading;
+    const error = selectedCollection === "beasts" ? beastsError : adventurerError;
     const { account, address } = useAccount();
     const explorer = useExplorer();
     const [currentPage, setCurrentPage] = useState(1);
@@ -139,6 +158,12 @@ export default function Auction({ nfts, loading, error }: AuctionProps) {
     useEffect(() => {
         setCurrentPage(1);
     }, [filters]);
+
+    // Clear selection when collection changes
+    useEffect(() => {
+        setSelectedNFTIds([]);
+        setCurrentPage(1);
+    }, [selectedCollection]);
 
     useEffect(() => {
         const loadLogos = async () => {
@@ -263,7 +288,7 @@ export default function Auction({ nfts, loading, error }: AuctionProps) {
 
             for (const tokenId of token_ids) {
                 calls.push({
-                    contractAddress: BEASTS_NFT_CONTRACT_ADDRESS,
+                    contractAddress: collectionConfig.contractAddress,
                     entrypoint: "approve",
                     calldata: [
                         AUCTION_CONTRACT_ADDRESS,
@@ -281,7 +306,7 @@ export default function Auction({ nfts, loading, error }: AuctionProps) {
                     startingPriceWhole.toString(),
                     token_ids.length.toString(),
                     ...token_ids.map(id => id.toString()),
-                    BEASTS_NFT_CONTRACT_ADDRESS,
+                    collectionConfig.contractAddress,
                     "0",
                     duration_seconds.toString(),
                     sellerToken
@@ -305,7 +330,7 @@ export default function Auction({ nfts, loading, error }: AuctionProps) {
             setIsSubmitting(false);
         }
 
-    }, [account, hasSelection, startingPriceUSD, collectionName, endDateTime, selectedNFTs, sellerToken]);
+    }, [account, hasSelection, startingPriceUSD, collectionName, endDateTime, selectedNFTs, sellerToken, collectionConfig.contractAddress]);
 
     const renderContent = () => {
     if (loading) {
@@ -321,6 +346,22 @@ export default function Auction({ nfts, loading, error }: AuctionProps) {
     }
 
     if (nfts.length === 0) {
+        const emptyStateMessage = selectedCollection === "beasts"
+            ? {
+                title: "No BEAST NFTs found in your wallet",
+                description: "Connect your wallet to see your Loot Survivor beast collection, or play",
+                linkText: "Loot Survivor",
+                linkHref: "https://lootsurvivor.io/",
+                suffix: "to acquire beasts!"
+            }
+            : {
+                title: "No Adventurer NFTs found in your wallet",
+                description: "Connect your wallet to see your Death Mountain adventurers, or play",
+                linkText: "Death Mountain",
+                linkHref: "https://deathmountain.gg/",
+                suffix: "to start an adventure!"
+            };
+
         return (
             <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-center gap-6 px-4 py-12">
                 <div className="w-20 h-20 rounded-full bg-[rgb(50,255,52)]/10 flex items-center justify-center">
@@ -330,14 +371,14 @@ export default function Auction({ nfts, loading, error }: AuctionProps) {
                 </div>
                 <div className="text-center">
                     <p className="text-lg text-[rgb(186,255,188)]/70 mb-2">
-                        No BEAST NFTs found in your wallet
+                        {emptyStateMessage.title}
                     </p>
                     <p className="text-sm text-[rgb(186,255,188)]/50 max-w-md">
-                        Connect your wallet to see your Loot Survivor beast collection, or play{" "}
-                        <a href="https://lootsurvivor.io/" target="_blank" rel="noopener noreferrer" className="text-[rgb(50,255,52)] hover:underline">
-                            Loot Survivor
+                        {emptyStateMessage.description}{" "}
+                        <a href={emptyStateMessage.linkHref} target="_blank" rel="noopener noreferrer" className="text-[rgb(50,255,52)] hover:underline">
+                            {emptyStateMessage.linkText}
                         </a>{" "}
-                        to acquire beasts!
+                        {emptyStateMessage.suffix}
                     </p>
                 </div>
             </div>
@@ -389,19 +430,22 @@ export default function Auction({ nfts, loading, error }: AuctionProps) {
 
     const renderGrid = () => (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 w-full">
-            {visibleNFTs.map((nft) => (
-                <MonsterCard
-                    key={nft.tokenId}
-                    nft={nft}
-                    selected={selectedNFTIds.includes(nft.tokenId)}
-                    onToggle={() => toggleCardSelection(nft.tokenId)}
-                    onInfoClick={() => {
-                        const index = filteredNFTs.findIndex(n => n.tokenId === nft.tokenId);
-                        setSelectedBeastIndex(index >= 0 ? index : 0);
-                        setIsBeastModalOpen(true);
-                    }}
-                />
-            ))}
+            {visibleNFTs.map((nft) => {
+                const CardComponent = selectedCollection === "beasts" ? MonsterCard : AdventurerCard;
+                return (
+                    <CardComponent
+                        key={nft.tokenId}
+                        nft={nft}
+                        selected={selectedNFTIds.includes(nft.tokenId)}
+                        onToggle={() => toggleCardSelection(nft.tokenId)}
+                        onInfoClick={() => {
+                            const index = filteredNFTs.findIndex(n => n.tokenId === nft.tokenId);
+                            setSelectedBeastIndex(index >= 0 ? index : 0);
+                            setIsBeastModalOpen(true);
+                        }}
+                    />
+                );
+            })}
         </div>
     );
 
@@ -644,7 +688,11 @@ export default function Auction({ nfts, loading, error }: AuctionProps) {
 
     return (
         <div className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4">
-            <Filters filters={filters} onFiltersChange={setFilters} summitListedCount={summitListedCount} />
+            <CollectionSelector
+                selectedCollection={selectedCollection}
+                onCollectionChange={setSelectedCollection}
+            />
+            <Filters filters={filters} onFiltersChange={setFilters} summitListedCount={selectedCollection === "beasts" ? summitListedCount : 0} collection={selectedCollection} />
             {renderContent()}
 
             <BeastDetailModal

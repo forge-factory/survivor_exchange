@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { BEAST_OPTIONS, TYPE_OPTIONS } from "../lib/constants/filters";
+import { CollectionType } from "../lib/constants";
 import CustomDropdown from "./custom-dropdown";
 import InfoTooltip from "./info-tooltip";
 
@@ -28,9 +29,11 @@ interface FiltersProps {
     filters: FilterState;
     onFiltersChange: (filters: FilterState) => void;
     summitListedCount?: number;
+    collection?: CollectionType;
 }
 
-export default function Filters({ token, filters, onFiltersChange, summitListedCount = 0 }: FiltersProps) {
+export default function Filters({ token, filters, onFiltersChange, summitListedCount = 0, collection = "beasts" }: FiltersProps) {
+    const isBeastsCollection = collection === "beasts";
     // Default to expanded on desktop (md breakpoint = 768px)
     const [isExpanded, setIsExpanded] = useState(false);
 
@@ -148,64 +151,69 @@ export default function Filters({ token, filters, onFiltersChange, summitListedC
             {isExpanded && (
                 <div className="rounded-2xl border border-[rgb(50,255,52)]/20 bg-black/55 p-6 shadow-[0_16px_40px_rgba(5,20,5,0.35)]">
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                        <div className="flex flex-col gap-2">
-                            <label className="text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70">
-                                Beast
-                            </label>
-                            <CustomDropdown
-                                id="filter-beast"
-                                value={filters.beast}
-                                onChange={(value) => updateFilter("beast", value)}
-                                options={[
-                                    { value: "", label: "All Beasts" },
-                                    ...BEAST_OPTIONS.map((beast) => ({
-                                        value: beast,
-                                        label: beast,
-                                    })),
-                                ]}
-                                variant="default"
-                            />
-                        </div>
+                        {/* Beast-specific filters */}
+                        {isBeastsCollection && (
+                            <>
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70">
+                                        Beast
+                                    </label>
+                                    <CustomDropdown
+                                        id="filter-beast"
+                                        value={filters.beast}
+                                        onChange={(value) => updateFilter("beast", value)}
+                                        options={[
+                                            { value: "", label: "All Beasts" },
+                                            ...BEAST_OPTIONS.map((beast) => ({
+                                                value: beast,
+                                                label: beast,
+                                            })),
+                                        ]}
+                                        variant="default"
+                                    />
+                                </div>
 
-                        <div className="flex flex-col gap-2">
-                            <label className="text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70 flex items-center gap-1.5">
-                                Type
-                                <InfoTooltip content="Beast combat type: Brute (high health), Hunter (balanced), or Magic (high damage). Type advantages apply in Loot Survivor combat." />
-                            </label>
-                            <CustomDropdown
-                                id="filter-type"
-                                value={filters.type}
-                                onChange={(value) => updateFilter("type", value)}
-                                options={[
-                                    { value: "", label: "All Types" },
-                                    ...TYPE_OPTIONS.map((type) => ({
-                                        value: type,
-                                        label: type,
-                                    })),
-                                ]}
-                                variant="default"
-                            />
-                        </div>
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70 flex items-center gap-1.5">
+                                        Type
+                                        <InfoTooltip content="Beast combat type: Brute (high health), Hunter (balanced), or Magic (high damage). Type advantages apply in Loot Survivor combat." />
+                                    </label>
+                                    <CustomDropdown
+                                        id="filter-type"
+                                        value={filters.type}
+                                        onChange={(value) => updateFilter("type", value)}
+                                        options={[
+                                            { value: "", label: "All Types" },
+                                            ...TYPE_OPTIONS.map((type) => ({
+                                                value: type,
+                                                label: type,
+                                            })),
+                                        ]}
+                                        variant="default"
+                                    />
+                                </div>
 
-                        <div className="flex flex-col gap-2">
-                            <label className="text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70 flex items-center gap-1.5">
-                                Tier
-                                <InfoTooltip content="Beast rarity tier from 1 (rarest/strongest) to 5 (common). Lower tier beasts are more powerful and valuable. Tier 1 beasts are the most sought after." />
-                            </label>
-                            <CustomDropdown
-                                id="filter-tier"
-                                value={filters.tier}
-                                onChange={(value) => updateFilter("tier", value)}
-                                options={[
-                                    { value: "", label: "All Tiers" },
-                                    ...[1, 2, 3, 4, 5].map((tier) => ({
-                                        value: tier.toString(),
-                                        label: `Tier ${tier}`,
-                                    })),
-                                ]}
-                                variant="default"
-                            />
-                        </div>
+                                <div className="flex flex-col gap-2">
+                                    <label className="text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70 flex items-center gap-1.5">
+                                        Tier
+                                        <InfoTooltip content="Beast rarity tier from 1 (rarest/strongest) to 5 (common). Lower tier beasts are more powerful and valuable. Tier 1 beasts are the most sought after." />
+                                    </label>
+                                    <CustomDropdown
+                                        id="filter-tier"
+                                        value={filters.tier}
+                                        onChange={(value) => updateFilter("tier", value)}
+                                        options={[
+                                            { value: "", label: "All Tiers" },
+                                            ...[1, 2, 3, 4, 5].map((tier) => ({
+                                                value: tier.toString(),
+                                                label: `Tier ${tier}`,
+                                            })),
+                                        ]}
+                                        variant="default"
+                                    />
+                                </div>
+                            </>
+                        )}
 
                         <div className="flex flex-col gap-2">
                             <label className="text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70 flex items-center gap-1.5">
@@ -234,95 +242,107 @@ export default function Filters({ token, filters, onFiltersChange, summitListedC
                             </div>
                         </div>
 
-                        <div className="flex flex-col gap-2">
-                            <label className="text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70 flex items-center gap-1.5">
-                                Power Range
-                                <InfoTooltip content="Overall beast combat power (1-550). Combines attack, defense, and special abilities. Higher power = more valuable and effective in battles." />
-                            </label>
-                            <div className="flex gap-2">
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max="550"
-                                    step="0.1"
-                                    value={filters.powerMin}
-                                    onChange={(e) => updateFilter("powerMin", e.target.value)}
-                                    placeholder="Min"
-                                    className="flex-1 rounded-xl border border-[rgb(50,255,52)]/40 bg-black/60 px-3 py-2 text-sm font-orbitron uppercase tracking-widest text-white outline-none transition focus:border-[rgb(50,255,52)] focus:ring-2 focus:ring-[rgb(50,255,52)]/35 hover:border-[rgb(50,255,52)]/60 placeholder:text-[rgb(186,255,188)]/40 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                                />
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max="550"
-                                    step="0.1"
-                                    value={filters.powerMax}
-                                    onChange={(e) => updateFilter("powerMax", e.target.value)}
-                                    placeholder="Max"
-                                    className="flex-1 rounded-xl border border-[rgb(50,255,52)]/40 bg-black/60 px-3 py-2 text-sm font-orbitron uppercase tracking-widest text-white outline-none transition focus:border-[rgb(50,255,52)] focus:ring-2 focus:ring-[rgb(50,255,52)]/35 hover:border-[rgb(50,255,52)]/60 placeholder:text-[rgb(186,255,188)]/40 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        {/* Beast-specific: Power Range */}
+                        {isBeastsCollection && (
+                            <div className="flex flex-col gap-2">
+                                <label className="text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70 flex items-center gap-1.5">
+                                    Power Range
+                                    <InfoTooltip content="Overall beast combat power (1-550). Combines attack, defense, and special abilities. Higher power = more valuable and effective in battles." />
+                                </label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="550"
+                                        step="0.1"
+                                        value={filters.powerMin}
+                                        onChange={(e) => updateFilter("powerMin", e.target.value)}
+                                        placeholder="Min"
+                                        className="flex-1 rounded-xl border border-[rgb(50,255,52)]/40 bg-black/60 px-3 py-2 text-sm font-orbitron uppercase tracking-widest text-white outline-none transition focus:border-[rgb(50,255,52)] focus:ring-2 focus:ring-[rgb(50,255,52)]/35 hover:border-[rgb(50,255,52)]/60 placeholder:text-[rgb(186,255,188)]/40 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                    />
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="550"
+                                        step="0.1"
+                                        value={filters.powerMax}
+                                        onChange={(e) => updateFilter("powerMax", e.target.value)}
+                                        placeholder="Max"
+                                        className="flex-1 rounded-xl border border-[rgb(50,255,52)]/40 bg-black/60 px-3 py-2 text-sm font-orbitron uppercase tracking-widest text-white outline-none transition focus:border-[rgb(50,255,52)] focus:ring-2 focus:ring-[rgb(50,255,52)]/35 hover:border-[rgb(50,255,52)]/60 placeholder:text-[rgb(186,255,188)]/40 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Beast-specific: Rank Range */}
+                        {isBeastsCollection && (
+                            <div className="flex flex-col gap-2">
+                                <label className="text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70 flex items-center gap-1.5">
+                                    Rank Range
+                                    <InfoTooltip content="Beast leaderboard ranking (1-1165). Lower rank = more prestigious. Rank 1 is the top beast. Affects Summit rewards eligibility." />
+                                </label>
+                                <div className="flex gap-2">
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="1165"
+                                        value={filters.rankMin}
+                                        onChange={(e) => updateFilter("rankMin", e.target.value)}
+                                        placeholder="Min"
+                                        className="flex-1 rounded-xl border border-[rgb(50,255,52)]/40 bg-black/60 px-3 py-2 text-sm font-orbitron uppercase tracking-widest text-white outline-none transition focus:border-[rgb(50,255,52)] focus:ring-2 focus:ring-[rgb(50,255,52)]/35 hover:border-[rgb(50,255,52)]/60 placeholder:text-[rgb(186,255,188)]/40 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                    />
+                                    <input
+                                        type="number"
+                                        min="1"
+                                        max="1165"
+                                        value={filters.rankMax}
+                                        onChange={(e) => updateFilter("rankMax", e.target.value)}
+                                        placeholder="Max"
+                                        className="flex-1 rounded-xl border border-[rgb(50,255,52)]/40 bg-black/60 px-3 py-2 text-sm font-orbitron uppercase tracking-widest text-white outline-none transition focus:border-[rgb(50,255,52)] focus:ring-2 focus:ring-[rgb(50,255,52)]/35 hover:border-[rgb(50,255,52)]/60 placeholder:text-[rgb(186,255,188)]/40 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                                    />
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Beast-specific: Shiny */}
+                        {isBeastsCollection && (
+                            <div className="flex flex-col gap-2">
+                                <label className="text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70">
+                                    Shiny
+                                </label>
+                                <CustomDropdown
+                                    id="filter-shiny"
+                                    value={filters.shiny}
+                                    onChange={(value) => updateFilter("shiny", value)}
+                                    options={[
+                                        { value: "", label: "All" },
+                                        { value: "true", label: "True" },
+                                        { value: "false", label: "False" },
+                                    ]}
+                                    variant="default"
                                 />
                             </div>
-                        </div>
+                        )}
 
-                        <div className="flex flex-col gap-2">
-                            <label className="text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70 flex items-center gap-1.5">
-                                Rank Range
-                                <InfoTooltip content="Beast leaderboard ranking (1-1165). Lower rank = more prestigious. Rank 1 is the top beast. Affects Summit rewards eligibility." />
-                            </label>
-                            <div className="flex gap-2">
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max="1165"
-                                    value={filters.rankMin}
-                                    onChange={(e) => updateFilter("rankMin", e.target.value)}
-                                    placeholder="Min"
-                                    className="flex-1 rounded-xl border border-[rgb(50,255,52)]/40 bg-black/60 px-3 py-2 text-sm font-orbitron uppercase tracking-widest text-white outline-none transition focus:border-[rgb(50,255,52)] focus:ring-2 focus:ring-[rgb(50,255,52)]/35 hover:border-[rgb(50,255,52)]/60 placeholder:text-[rgb(186,255,188)]/40 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
-                                />
-                                <input
-                                    type="number"
-                                    min="1"
-                                    max="1165"
-                                    value={filters.rankMax}
-                                    onChange={(e) => updateFilter("rankMax", e.target.value)}
-                                    placeholder="Max"
-                                    className="flex-1 rounded-xl border border-[rgb(50,255,52)]/40 bg-black/60 px-3 py-2 text-sm font-orbitron uppercase tracking-widest text-white outline-none transition focus:border-[rgb(50,255,52)] focus:ring-2 focus:ring-[rgb(50,255,52)]/35 hover:border-[rgb(50,255,52)]/60 placeholder:text-[rgb(186,255,188)]/40 [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                        {/* Beast-specific: Animated */}
+                        {isBeastsCollection && (
+                            <div className="flex flex-col gap-2">
+                                <label className="text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70">
+                                    Animated
+                                </label>
+                                <CustomDropdown
+                                    id="filter-animated"
+                                    value={filters.animated}
+                                    onChange={(value) => updateFilter("animated", value)}
+                                    options={[
+                                        { value: "", label: "All" },
+                                        { value: "true", label: "True" },
+                                        { value: "false", label: "False" },
+                                    ]}
+                                    variant="default"
                                 />
                             </div>
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                            <label className="text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70">
-                                Shiny
-                            </label>
-                            <CustomDropdown
-                                id="filter-shiny"
-                                value={filters.shiny}
-                                onChange={(value) => updateFilter("shiny", value)}
-                                options={[
-                                    { value: "", label: "All" },
-                                    { value: "true", label: "True" },
-                                    { value: "false", label: "False" },
-                                ]}
-                                variant="default"
-                            />
-                        </div>
-
-                        <div className="flex flex-col gap-2">
-                            <label className="text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70">
-                                Animated
-                            </label>
-                            <CustomDropdown
-                                id="filter-animated"
-                                value={filters.animated}
-                                onChange={(value) => updateFilter("animated", value)}
-                                options={[
-                                    { value: "", label: "All" },
-                                    { value: "true", label: "True" },
-                                    { value: "false", label: "False" },
-                                ]}
-                                variant="default"
-                            />
-                        </div>
+                        )}
 
                         <div className="flex flex-col gap-2">
                             <label className="text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70 flex items-center gap-1.5">

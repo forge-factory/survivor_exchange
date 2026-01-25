@@ -10,9 +10,9 @@ import { AuctionWithNFTs } from "../hooks/use-auctions";
 import { FormattedListing } from "../hooks/use-my-listings";
 
 interface BidAuctionMyListingsProps {
-    nfts: FormattedNFT[];
-    loading: boolean;
-    error: Error | null;
+    nfts?: FormattedNFT[];
+    loading?: boolean;
+    error?: Error | null;
     auctions: AuctionWithNFTs[];
     allAuctions?: AuctionWithNFTs[];
     auctionsLoading: boolean;
@@ -73,12 +73,7 @@ export default function BidAuctionMyListingsRent({
                     />
                 )}
                 {activeTab === "auction" && (
-                    <Auction
-                        key="auction-tab"
-                        nfts={nfts}
-                        loading={loading}
-                        error={error}
-                    />
+                    <Auction key="auction-tab" />
                 )}
                 {activeTab === "my-listings" && (
                     <MyListings
