@@ -12,10 +12,11 @@ import BidsSkeleton from "./bids-skeleton";
 import CustomDropdown from "./custom-dropdown";
 import InfoTooltip from "./info-tooltip";
 import BeastDetailModal from "./beast-detail-modal";
+import AdventurerDetailModal from "./adventurer-detail-modal";
 import AddressDisplay from "./address-display";
 import CountdownTimer from "./countdown-timer";
 import { useWalletModal } from "../providers/wallet-modal-provider";
-import type { AuctionItem } from "../lib/types";
+import type { AuctionItem, FormattedNFT } from "../lib/types";
 import { AuctionWithNFTs } from "../hooks/use-auctions";
 import { useBeastSkullRewards } from "../hooks/use-beast-skull-rewards";
 import { useSummitLeaderboard, findMatchingSummitBeast, SummitBeast } from "../hooks/use-summit-leaderboard";
@@ -36,7 +37,7 @@ import {
   USDC_ADDRESS,
 } from "../lib/constants";
 import { fetchTokens, getQuotes, quoteToCalls } from "@avnu/avnu-sdk";
-import { normalizeContractAddress } from "../lib/utils/normalization";
+import { normalizeContractAddress, normalizeTokenId } from "../lib/utils/normalization";
 import {
   getTokenPriceInUSDC,
   shouldRefetchPrice,
@@ -114,6 +115,7 @@ export default function Bids({
   error,
   currentPage,
   setCurrentPage,
+  getAuctionItems,
   token,
 }: BidsProps) {
   const { account, address } = useAccount();
@@ -348,6 +350,11 @@ export default function Bids({
     Record<string, { amount: string; usdValue: string | null }>
   >({});
 
+  // State for adventurer detail image URL (when NFTs aren't fetched)
+  const [adventurerDetailImage, setAdventurerDetailImage] = useState<string | null>(null);
+  const [isAdventurerModalOpen, setIsAdventurerModalOpen] = useState(false);
+  const [selectedAdventurerIndex, setSelectedAdventurerIndex] = useState(0);
+
   const priceRetryIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -371,6 +378,40 @@ export default function Bids({
       return () => clearTimeout(timer);
     }
   }, [selectedCollectionId]);
+
+  // Compute adventurer image URL for detail panel when an adventurer auction is selected
+  useEffect(() => {
+    if (!selectedCollectionId) {
+      setAdventurerDetailImage(null);
+      return;
+    }
+
+    const auctionItems = getAuctionItems(selectedCollectionId);
+    const isAdventurerAuction = auctionItems.length > 0 && auctionItems.some(item => {
+      const contractAddr = normalizeContractAddress(item.contract_address || '').toLowerCase();
+      const adventurerAddr = normalizeContractAddress(ADVENTURER_NFT_CONTRACT_ADDRESS).toLowerCase();
+      return contractAddr === adventurerAddr;
+    });
+
+    if (!isAdventurerAuction) {
+      setAdventurerDetailImage(null);
+      return;
+    }
+
+    // Get first item's token ID and generate static URL
+    const firstItem = auctionItems[0];
+    if (!firstItem) return;
+
+    const tokenIdStr = String(firstItem.token_id);
+    const tokenIdNum = tokenIdStr.startsWith("0x")
+      ? parseInt(tokenIdStr, 16)
+      : parseInt(tokenIdStr, 10);
+
+    // Generate static image URL
+    const paddedTokenId = "0x" + tokenIdNum.toString(16).padStart(64, '0');
+    const imageUrl = `https://api.cartridge.gg/x/arcade-main/torii/static/${ADVENTURER_NFT_CONTRACT_ADDRESS}/${paddedTokenId}/image`;
+    setAdventurerDetailImage(imageUrl);
+  }, [selectedCollectionId, getAuctionItems]);
 
   // Track if we've auto-opened from URL to avoid re-triggering
   const hasAutoOpenedFromUrl = useRef(false);
@@ -458,6 +499,39 @@ export default function Bids({
     );
     return directAuction?.nfts || [];
   }, [selectedCollectionId, paginatedFilteredAuctions, auctions]);
+
+  // Create synthetic FormattedNFT[] from auction items for adventurer auctions
+  const selectedAdventurerNfts = useMemo((): FormattedNFT[] => {
+    if (!selectedCollectionId) return [];
+
+    const auctionItems = getAuctionItems(selectedCollectionId);
+    const isAdventurerAuction = auctionItems.length > 0 && auctionItems.some(item => {
+      const contractAddr = normalizeContractAddress(item.contract_address || '').toLowerCase();
+      const adventurerAddr = normalizeContractAddress(ADVENTURER_NFT_CONTRACT_ADDRESS).toLowerCase();
+      return contractAddr === adventurerAddr;
+    });
+
+    if (!isAdventurerAuction) return [];
+
+    // Filter to only adventurer items and create synthetic NFTs
+    return auctionItems
+      .filter(item => {
+        const contractAddr = normalizeContractAddress(item.contract_address || '').toLowerCase();
+        const adventurerAddr = normalizeContractAddress(ADVENTURER_NFT_CONTRACT_ADDRESS).toLowerCase();
+        return contractAddr === adventurerAddr;
+      })
+      .map((item): FormattedNFT => ({
+        tokenId: normalizeTokenId(item.token_id),
+        contractAddress: normalizeContractAddress(item.contract_address || ADVENTURER_NFT_CONTRACT_ADDRESS),
+        metadataName: `Adventurer`,
+        metadataDescription: '',
+        imagePath: '',
+        metadata: null,
+        attributes: [],
+        name: 'Adventurer',
+        symbol: 'ADV',
+      }));
+  }, [selectedCollectionId, getAuctionItems]);
 
   // Track if we need to open modal after NFTs load
   const shouldOpenModalOnNftsLoad = useRef(false);
@@ -1923,9 +1997,10 @@ export default function Bids({
             // Show detail panel after the last card in the selected row
             const showDetailAfterThis = index === lastIndexInSelectedRow && selectedCollection;
 
-            // Check if this auction contains Adventurer NFTs
-            const isAdventurerAuction = nfts.length > 0 && nfts.some(nft => {
-              const contractAddr = normalizeContractAddress(nft.contractAddress || '').toLowerCase();
+            // Check if this auction contains Adventurer NFTs using auction items
+            const auctionItems = getAuctionItems(collection.id);
+            const isAdventurerAuction = auctionItems.length > 0 && auctionItems.some(item => {
+              const contractAddr = normalizeContractAddress(item.contract_address || '').toLowerCase();
               const adventurerAddr = normalizeContractAddress(ADVENTURER_NFT_CONTRACT_ADDRESS).toLowerCase();
               return contractAddr === adventurerAddr;
             });
@@ -1939,6 +2014,7 @@ export default function Bids({
                     onSelect={() => handleSelectCollection(collection)}
                     onQuickBid={() => handleQuickBid(collection)}
                     nfts={nfts}
+                    items={auctionItems}
                   />
                 ) : (
                   <MonsterCollectionCard
@@ -1988,6 +2064,25 @@ export default function Bids({
                   const nfts = auction?.nfts || [];
 
                   if (nfts.length === 0) {
+                    // Check if this is an adventurer auction with fetched image
+                    if (adventurerDetailImage) {
+                      return (
+                        <div
+                          onClick={() => {
+                            setSelectedAdventurerIndex(0);
+                            setIsAdventurerModalOpen(true);
+                          }}
+                          className="flex h-28 w-28 items-center justify-center rounded-2xl border border-[rgb(50,255,52)]/35 bg-[rgb(50,255,52)]/10 overflow-hidden cursor-pointer transition-all hover:scale-105 hover:ring-2 hover:ring-[rgb(50,255,52)]/60"
+                        >
+                          <img
+                            src={adventurerDetailImage}
+                            alt={selectedCollection.name}
+                            draggable={false}
+                            className="h-full w-full object-contain"
+                          />
+                        </div>
+                      );
+                    }
                     return (
                       <div className="flex h-28 w-28 items-center justify-center rounded-2xl border border-[rgb(50,255,52)]/35 bg-[rgb(50,255,52)]/10">
                         <Image
@@ -3194,6 +3289,14 @@ export default function Bids({
         onMakeOffer={handleMakeOffer}
         onOpenWallet={openWalletModal}
         summitBeasts={auctionSummitBeasts}
+      />
+
+      <AdventurerDetailModal
+        isOpen={isAdventurerModalOpen}
+        onClose={() => setIsAdventurerModalOpen(false)}
+        nfts={selectedAdventurerNfts}
+        currentIndex={selectedAdventurerIndex}
+        onNavigate={setSelectedAdventurerIndex}
       />
     </div>
   );

@@ -1,11 +1,23 @@
 "use client";
 
-import { useMemo, useState, useEffect } from "react";
-import Image from "next/image";
-import type { FormattedNFT } from "../lib/types";
+import { useMemo } from "react";
+import type { FormattedNFT, AuctionItem } from "../lib/types";
 import { formatUSDSmart, truncateAuctionName } from "../lib/utils";
+import { normalizeTokenId } from "../lib/utils/normalization";
+import { ADVENTURER_NFT_CONTRACT_ADDRESS } from "../lib/constants";
 import CountdownTimer from "./countdown-timer";
 import BidPriceChart from "./bid-price-chart";
+
+// Helper to generate static adventurer image URL
+const getAdventurerImageUrl = (tokenId: string): string => {
+    // Parse token ID to number
+    const tokenIdNum = tokenId.startsWith("0x")
+        ? parseInt(tokenId, 16)
+        : parseInt(tokenId, 10);
+    // Pad to 64 hex characters
+    const paddedTokenId = "0x" + tokenIdNum.toString(16).padStart(64, '0');
+    return `https://api.cartridge.gg/x/arcade-main/torii/static/${ADVENTURER_NFT_CONTRACT_ADDRESS}/${paddedTokenId}/image`;
+};
 
 type AdventurerCollectionCardProps = {
     collection: {
@@ -23,10 +35,8 @@ type AdventurerCollectionCardProps = {
     onSelect: () => void;
     onQuickBid?: () => void;
     nfts?: FormattedNFT[];
+    items?: AuctionItem[];
 };
-
-// Cache for adventurer images
-const adventurerImageCache = new Map<string, string>();
 
 // Helper to calculate time remaining
 const getSecondsRemaining = (endTime?: string): number | null => {
@@ -48,46 +58,16 @@ export default function AdventurerCollectionCard({
     isSelected,
     onSelect,
     onQuickBid,
-    nfts = []
+    nfts = [],
+    items = []
 }: AdventurerCollectionCardProps) {
-    const [adventurerImage, setAdventurerImage] = useState<string | null>(null);
-    const [imageLoading, setImageLoading] = useState(true);
-
-    // Get first NFT for image fetching
+    // Get first NFT or auction item for image
     const firstNft = nfts[0];
+    const firstItemTokenId = items[0]?.token_id ? normalizeTokenId(items[0].token_id) : null;
+    const tokenId = firstNft?.tokenId || firstItemTokenId;
 
-    // Fetch adventurer image from contract
-    useEffect(() => {
-        if (!firstNft) {
-            setImageLoading(false);
-            return;
-        }
-
-        // Check cache
-        const cached = adventurerImageCache.get(firstNft.tokenId);
-        if (cached) {
-            setAdventurerImage(cached);
-            setImageLoading(false);
-            return;
-        }
-
-        // Parse token ID
-        const tokenIdNum = firstNft.tokenId.startsWith("0x")
-            ? parseInt(firstNft.tokenId, 16)
-            : parseInt(firstNft.tokenId, 10);
-
-        setImageLoading(true);
-        fetch(`/api/adventurer-image/${tokenIdNum}`)
-            .then(res => res.ok ? res.json() : null)
-            .then(data => {
-                if (data?.metadata?.image) {
-                    adventurerImageCache.set(firstNft.tokenId, data.metadata.image);
-                    setAdventurerImage(data.metadata.image);
-                }
-            })
-            .catch(() => {})
-            .finally(() => setImageLoading(false));
-    }, [firstNft]);
+    // Generate static image URL
+    const adventurerImage = tokenId ? getAdventurerImageUrl(tokenId) : null;
 
     // Calculate urgency level
     const urgencyInfo = useMemo(() => {
@@ -121,17 +101,6 @@ export default function AdventurerCollectionCard({
     }, [collection.endTime, collection.highestBid, collection.status]);
 
     const hasBids = collection.highestBid && collection.highestBid > 0;
-
-    // Get XP and Level from first NFT attributes
-    const getAttribute = (traitType: string) => {
-        if (!firstNft?.attributes) return undefined;
-        const attr = firstNft.attributes.find((a) => a.trait_type === traitType);
-        return attr ? String(attr.value) : undefined;
-    };
-
-    const xp = getAttribute("XP") || getAttribute("Score") || "0";
-    const level = getAttribute("Level") || Math.floor(Math.sqrt(parseInt(xp))).toString();
-    const gameOver = getAttribute("Game Over") === "True";
 
     const stats = [
         {
@@ -194,13 +163,6 @@ export default function AdventurerCollectionCard({
                 </div>
             )}
 
-            {/* Dead Badge */}
-            {gameOver && (
-                <div className="absolute top-4 left-4 z-20 px-2.5 py-1 rounded-full text-[10px] font-orbitron uppercase tracking-wider font-bold bg-red-500/20 text-red-400 border border-red-500/40">
-                    Dead
-                </div>
-            )}
-
             <header className="flex flex-col gap-1 text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/75">
                 <span className="text-[10px] tracking-[0.2em] text-[rgb(186,255,188)]/60">
                     {collection.totalMonsters} adventurer{collection.totalMonsters === 1 ? '' : 's'} in this collection
@@ -210,9 +172,7 @@ export default function AdventurerCollectionCard({
             <div className="flex flex-col items-center gap-4 text-center">
                 {/* Image */}
                 <div className="h-24 w-24 rounded-2xl border border-[rgb(50,255,52)]/40 bg-[rgb(50,255,52)]/5 overflow-hidden flex items-center justify-center">
-                    {imageLoading ? (
-                        <div className="animate-pulse w-16 h-16 rounded-full bg-[rgb(50,255,52)]/10" />
-                    ) : adventurerImage ? (
+                    {adventurerImage ? (
                         <img
                             src={adventurerImage}
                             alt={collection.name}
@@ -243,21 +203,6 @@ export default function AdventurerCollectionCard({
                     >
                         {truncateAuctionName(collection.name)}
                     </h3>
-
-                    {/* Level & XP Stats */}
-                    {firstNft && (
-                        <div className="flex items-center justify-center gap-4 text-sm">
-                            <div className="flex items-center gap-1">
-                                <span className="text-white font-orbitron font-bold">{level}</span>
-                                <span className="text-[rgb(186,255,188)]/50 text-[10px] uppercase">LVL</span>
-                            </div>
-                            <div className="w-px h-4 bg-[rgb(50,255,52)]/20" />
-                            <div className="flex items-center gap-1">
-                                <span className="text-[rgb(50,255,52)] font-orbitron font-bold">{parseInt(xp).toLocaleString()}</span>
-                                <span className="text-[rgb(186,255,188)]/50 text-[10px] uppercase">XP</span>
-                            </div>
-                        </div>
-                    )}
 
                     {collection.endTime && (
                         <p className="text-xs text-[rgb(186,255,188)]/70">

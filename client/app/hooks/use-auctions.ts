@@ -110,9 +110,10 @@ export function useAuctions() {
   const itemsByAuction = useMemo(() => {
     const map = new Map<string, AuctionItem[]>();
     for (const item of allAuctionItems) {
-      const existing = map.get(item.auction_id) || [];
+      const auctionIdStr = String(item.auction_id);
+      const existing = map.get(auctionIdStr) || [];
       existing.push(item);
-      map.set(item.auction_id, existing);
+      map.set(auctionIdStr, existing);
     }
     return map;
   }, [allAuctionItems]);
@@ -120,9 +121,10 @@ export function useAuctions() {
   const bidsByAuction = useMemo(() => {
     const map = new Map<string, Bid[]>();
     for (const bid of allBids) {
-      const existing = map.get(bid.auction_id) || [];
+      const auctionIdStr = String(bid.auction_id);
+      const existing = map.get(auctionIdStr) || [];
       existing.push(bid);
-      map.set(bid.auction_id, existing);
+      map.set(auctionIdStr, existing);
     }
     return map;
   }, [allBids]);
@@ -145,9 +147,10 @@ export function useAuctions() {
 
       // Only include pending offers (status === 1)
       if (statusNum === 1) {
-        const existing = map.get(offer.auction_id) || [];
+        const auctionIdStr = String(offer.auction_id);
+        const existing = map.get(auctionIdStr) || [];
         existing.push(offer);
-        map.set(offer.auction_id, existing);
+        map.set(auctionIdStr, existing);
       }
     }
     return map;
@@ -184,7 +187,7 @@ export function useAuctions() {
 
       const auctionsBySeller = new Map<string, Auction[]>();
       for (const auction of allAuctions) {
-        const items = itemsByAuction.get(auction.auction_id);
+        const items = itemsByAuction.get(String(auction.auction_id));
         if (items && items.length > 0) {
           const existing = auctionsBySeller.get(auction.seller) || [];
           existing.push(auction);
@@ -229,14 +232,15 @@ export function useAuctions() {
           const formattedNFTs = formatNFTs(rawNFTs);
 
           for (const auction of sellerAuctions) {
-            const items = itemsByAuction.get(auction.auction_id) || [];
+            const auctionIdStr = String(auction.auction_id);
+            const items = itemsByAuction.get(auctionIdStr) || [];
             const matchedNFTs = formattedNFTs.filter((nft) =>
               items.some(
                 (item) => nft.tokenId === normalizeTokenId(item.token_id),
               ),
             );
-            const bids = bidsByAuction.get(auction.auction_id) || [];
-            const offers = offersByAuction.get(auction.auction_id) || [];
+            const bids = bidsByAuction.get(auctionIdStr) || [];
+            const offers = offersByAuction.get(auctionIdStr) || [];
             const executedAt =
               items.length > 0 && items[0].entity?.executedAt
                 ? items[0].entity.executedAt
@@ -252,9 +256,10 @@ export function useAuctions() {
           }
         } catch {
           for (const auction of sellerAuctions) {
-            const items = itemsByAuction.get(auction.auction_id) || [];
-            const bids = bidsByAuction.get(auction.auction_id) || [];
-            const offers = offersByAuction.get(auction.auction_id) || [];
+            const auctionIdStr = String(auction.auction_id);
+            const items = itemsByAuction.get(auctionIdStr) || [];
+            const bids = bidsByAuction.get(auctionIdStr) || [];
+            const offers = offersByAuction.get(auctionIdStr) || [];
             const executedAt =
               items.length > 0 && items[0].entity?.executedAt
                 ? items[0].entity.executedAt
@@ -271,9 +276,10 @@ export function useAuctions() {
       }
 
       for (const auction of allAuctions) {
-        if (!itemsByAuction.has(auction.auction_id)) {
-          const bids = bidsByAuction.get(auction.auction_id) || [];
-          const offers = offersByAuction.get(auction.auction_id) || [];
+        const auctionIdStr = String(auction.auction_id);
+        if (!itemsByAuction.has(auctionIdStr)) {
+          const bids = bidsByAuction.get(auctionIdStr) || [];
+          const offers = offersByAuction.get(auctionIdStr) || [];
           auctionsWithNFTsData.push({
             ...auction,
             nfts: [],
