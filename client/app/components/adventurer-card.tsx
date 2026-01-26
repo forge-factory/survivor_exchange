@@ -32,6 +32,7 @@ export default function AdventurerCard({
 
   const playerName = getAttribute("Player Name") || nft.metadataName || "Unknown";
   const xp = getAttribute("XP") || getAttribute("Score") || "0";
+  const level = getAttribute("Level") || Math.floor(Math.sqrt(parseInt(xp))).toString();
   const gameName = getAttribute("Game Name") || "Death Mountain";
   const gameOver = getAttribute("Game Over") === "True";
 
@@ -226,12 +227,21 @@ export default function AdventurerCard({
           {playerName}
         </h3>
 
-        {/* XP Display - prominent */}
-        <div className="flex items-center justify-center gap-1 mt-auto">
-          <span className="text-2xl font-orbitron font-bold text-[rgb(50,255,52)]">
-            {parseInt(xp).toLocaleString()}
-          </span>
-          <span className="text-[10px] uppercase text-[rgb(186,255,188)]/50">XP</span>
+        {/* Level & XP Display */}
+        <div className="flex items-center justify-center gap-4 mt-auto">
+          <div className="flex flex-col items-center">
+            <span className="text-xl font-orbitron font-bold text-white">
+              {level}
+            </span>
+            <span className="text-[9px] uppercase text-[rgb(186,255,188)]/50">LVL</span>
+          </div>
+          <div className="w-px h-8 bg-[rgb(50,255,52)]/20" />
+          <div className="flex flex-col items-center">
+            <span className="text-xl font-orbitron font-bold text-[rgb(50,255,52)]">
+              {parseInt(xp).toLocaleString()}
+            </span>
+            <span className="text-[9px] uppercase text-[rgb(186,255,188)]/50">XP</span>
+          </div>
         </div>
       </div>
     </article>

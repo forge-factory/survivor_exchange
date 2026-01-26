@@ -37,6 +37,7 @@ export default function AdventurerDetailModal({
 
   const playerName = getAttribute("Player Name") || currentNft?.metadataName || "Unknown";
   const xp = getAttribute("XP") || getAttribute("Score") || "0";
+  const level = getAttribute("Level") || Math.floor(Math.sqrt(parseInt(xp))).toString();
   const gameName = getAttribute("Game Name") || "Death Mountain";
   const gameOver = getAttribute("Game Over") === "True";
 
@@ -224,14 +225,25 @@ export default function AdventurerDetailModal({
             )}
           </div>
 
-          {/* XP - The main focus */}
-          <div className="flex flex-col items-center gap-1 py-4">
-            <span className="text-5xl font-orbitron font-bold text-[rgb(50,255,52)]">
-              {parseInt(xp).toLocaleString()}
-            </span>
-            <span className="text-sm uppercase tracking-wider text-[rgb(186,255,188)]/50">
-              Experience Points
-            </span>
+          {/* Level & XP */}
+          <div className="flex items-center justify-center gap-8 py-4">
+            <div className="flex flex-col items-center">
+              <span className="text-4xl font-orbitron font-bold text-white">
+                {level}
+              </span>
+              <span className="text-sm uppercase tracking-wider text-[rgb(186,255,188)]/50">
+                Level
+              </span>
+            </div>
+            <div className="w-px h-16 bg-[rgb(50,255,52)]/30" />
+            <div className="flex flex-col items-center">
+              <span className="text-4xl font-orbitron font-bold text-[rgb(50,255,52)]">
+                {parseInt(xp).toLocaleString()}
+              </span>
+              <span className="text-sm uppercase tracking-wider text-[rgb(186,255,188)]/50">
+                XP
+              </span>
+            </div>
           </div>
 
           {/* Select Button */}
