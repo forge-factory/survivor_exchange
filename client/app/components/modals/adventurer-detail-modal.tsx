@@ -5,6 +5,7 @@ import Image from "next/image";
 import type { FormattedNFT } from "../../lib/types";
 import { CustomDropdown, InfoTooltip, CountdownTimer, type DropdownOption } from "../ui";
 import { formatUSDSmart } from "../../lib/utils";
+import { copyAuctionLink } from "../../lib/utils/share-utils";
 
 /** Auction bid data for displaying price info */
 interface AuctionBidData {
@@ -55,8 +56,27 @@ interface AdventurerDetailModalProps {
   onOpenWallet?: () => void;
 }
 
-// Client-side cache for fetched metadata
-const metadataCache = new Map<string, { image: string; name: string; description: string }>();
+/** Metadata attribute from NFT metadata or Torii SQL */
+interface MetadataAttribute {
+  trait_type: string;
+  value: string | number;
+}
+
+/** Full metadata from API */
+interface AdventurerMetadata {
+  image: string;
+  name: string;
+  description: string;
+}
+
+/** Combined adventurer data from multiple API sources */
+interface AdventurerData {
+  metadata: AdventurerMetadata | null;
+  attributes: MetadataAttribute[];
+}
+
+// Client-side cache for fetched data
+const dataCache = new Map<string, AdventurerData>();
 
 export default function AdventurerDetailModal({
   isOpen,
@@ -77,63 +97,110 @@ export default function AdventurerDetailModal({
   onOpenWallet,
 }: AdventurerDetailModalProps) {
   const currentNft = nfts[currentIndex];
-  const [metadata, setMetadata] = useState<{ image: string; name: string; description: string } | null>(null);
+  const [adventurerData, setAdventurerData] = useState<AdventurerData | null>(null);
   const [loading, setLoading] = useState(false);
-
-  const getAttribute = (traitType: string) => {
-    const attr = currentNft?.attributes.find((a) => a.trait_type === traitType);
-    return attr ? String(attr.value) : undefined;
-  };
-
-  const playerName = getAttribute("Player Name") || currentNft?.metadataName || "Unknown";
-  const xp = getAttribute("XP") || getAttribute("Score") || "0";
-  const level = getAttribute("Level") || Math.floor(Math.sqrt(parseInt(xp))).toString();
-  const gameName = getAttribute("Game Name") || "Death Mountain";
-  const gameOver = getAttribute("Game Over") === "True";
+  const [linkCopied, setLinkCopied] = useState(false);
 
   // Parse token ID
   const tokenIdNum = currentNft?.tokenId.startsWith("0x")
     ? parseInt(currentNft.tokenId, 16)
     : parseInt(currentNft?.tokenId || "0", 10);
 
-  // Fetch metadata when modal opens or NFT changes
+  // Fetch metadata and attributes when modal opens or NFT changes
   useEffect(() => {
     if (!isOpen || !currentNft) {
-      setMetadata(null);
+      setAdventurerData(null);
       return;
     }
 
-    const cached = metadataCache.get(currentNft.tokenId);
+    const cached = dataCache.get(currentNft.tokenId);
     if (cached) {
-      setMetadata(cached);
+      setAdventurerData(cached);
       return;
     }
 
-    const fetchMetadata = async () => {
+    const fetchData = async () => {
       setLoading(true);
       try {
-        const response = await fetch(`/api/adventurer-image/${tokenIdNum}`);
-        if (response.ok) {
-          const data = await response.json();
-          if (data.metadata) {
-            const meta = {
-              image: data.metadata.image || "",
-              name: data.metadata.name || `Adventurer #${tokenIdNum}`,
-              description: data.metadata.description || "",
+        // Fetch both metadata (image) and attributes (Level, XP) in parallel
+        const [metadataResponse, attributesResponse] = await Promise.all([
+          fetch(`/api/adventurer-image/${tokenIdNum}`),
+          fetch(`/api/adventurer-attributes/${tokenIdNum}`),
+        ]);
+
+        let metadata: AdventurerMetadata | null = null;
+        let attributes: MetadataAttribute[] = [];
+
+        // Parse metadata response
+        if (metadataResponse.ok) {
+          const metaData = await metadataResponse.json();
+          if (metaData.metadata) {
+            metadata = {
+              image: metaData.metadata.image || "",
+              name: metaData.metadata.name || `Adventurer #${tokenIdNum}`,
+              description: metaData.metadata.description || "",
             };
-            metadataCache.set(currentNft.tokenId, meta);
-            setMetadata(meta);
           }
         }
+
+        // Parse attributes response (from Torii SQL - has Level, XP, etc.)
+        if (attributesResponse.ok) {
+          const attrData = await attributesResponse.json();
+          if (attrData.attributes && Array.isArray(attrData.attributes)) {
+            attributes = attrData.attributes;
+          }
+        }
+
+        const data: AdventurerData = { metadata, attributes };
+        dataCache.set(currentNft.tokenId, data);
+        setAdventurerData(data);
       } catch (error) {
-        console.error("Failed to fetch metadata:", error);
+        console.error("Failed to fetch adventurer data:", error);
       } finally {
         setLoading(false);
       }
     };
 
-    fetchMetadata();
+    fetchData();
   }, [isOpen, currentNft, tokenIdNum]);
+
+  // Helper to get attribute from fetched data or NFT
+  const getAttribute = (traitType: string): string | undefined => {
+    // First try attributes from Torii SQL (most reliable source)
+    if (adventurerData?.attributes) {
+      const attr = adventurerData.attributes.find((a) => a.trait_type === traitType);
+      if (attr) return String(attr.value);
+    }
+    // Fall back to NFT attributes passed from parent
+    const nftAttr = currentNft?.attributes.find((a) => a.trait_type === traitType);
+    return nftAttr ? String(nftAttr.value) : undefined;
+  };
+
+  const playerName = getAttribute("Player Name") || adventurerData?.metadata?.name || currentNft?.metadataName || "Unknown";
+  const xp = getAttribute("XP") || getAttribute("Score") || "0";
+  const level = getAttribute("Level") || "0";
+  const gameName = getAttribute("Game Name") || "Death Mountain";
+  const gameOver = getAttribute("Game Over") === "True" || getAttribute("Game Over") === "true";
+
+  // Reset link copied state when navigating or closing
+  useEffect(() => {
+    setLinkCopied(false);
+  }, [currentIndex, isOpen]);
+
+  // Clear link copied feedback after 3 seconds
+  useEffect(() => {
+    if (linkCopied) {
+      const timer = setTimeout(() => setLinkCopied(false), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [linkCopied]);
+
+  // Copy Link handler - copies auction link when in auction context
+  const handleCopyLink = useCallback(async () => {
+    if (!auctionId) return;
+    const success = await copyAuctionLink(auctionId);
+    setLinkCopied(success);
+  }, [auctionId]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -221,6 +288,30 @@ export default function AdventurerDetailModal({
                 </button>
               </div>
             )}
+            {/* Copy Link button (only in auction context) */}
+            {auctionId && (
+              <button
+                onClick={handleCopyLink}
+                aria-label="Copy link to this auction"
+                title={linkCopied ? "Copied!" : "Copy Auction Link"}
+                className={`w-8 h-8 flex items-center justify-center rounded-lg border transition-all ${
+                  linkCopied
+                    ? "border-green-500/60 bg-green-500/20 text-green-400"
+                    : "border-[rgb(50,255,52)]/40 bg-[rgb(50,255,52)]/10 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/20"
+                }`}
+              >
+                {linkCopied ? (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12" />
+                  </svg>
+                ) : (
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                    <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                  </svg>
+                )}
+              </button>
+            )}
             {/* Close button */}
             <button
               onClick={onClose}
@@ -241,9 +332,9 @@ export default function AdventurerDetailModal({
             <div className="relative w-64 h-64 rounded-xl border-2 border-[rgb(50,255,52)]/40 bg-[rgb(50,255,52)]/5 overflow-hidden flex items-center justify-center">
               {loading ? (
                 <div className="animate-pulse w-24 h-24 rounded-full bg-[rgb(50,255,52)]/10" />
-              ) : metadata?.image ? (
+              ) : adventurerData?.metadata?.image ? (
                 <Image
-                  src={metadata.image}
+                  src={adventurerData.metadata.image}
                   alt={playerName}
                   width={256}
                   height={256}
