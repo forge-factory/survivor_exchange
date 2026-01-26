@@ -3067,6 +3067,57 @@ export default function Bids({
         nfts={selectedAdventurerNfts}
         currentIndex={selectedAdventurerIndex}
         onNavigate={setSelectedAdventurerIndex}
+        auctionId={selectedCollectionId}
+        auctionBidData={selectedCollection ? {
+          startingPrice: selectedCollection.startingPrice / 1e6,
+          highestBid: selectedCollection.highestBid,
+          status: selectedCollection.status,
+          endTime: selectedCollection.endTime,
+          isUserSeller: (() => {
+            const auction = auctions.find((a) => String(a.auction_id) === selectedCollectionId);
+            if (!address || !auction?.seller) return false;
+            const userAddress = normalizeContractAddress(address).toLowerCase();
+            const sellerAddress = normalizeContractAddress(auction.seller).toLowerCase();
+            return userAddress === sellerAddress;
+          })(),
+        } : undefined}
+        bidState={{
+          bidAmount: bidAmountToken,
+          isSubmitting,
+          isSubmittingOffer,
+          hasActiveOffer: !!userOffer,
+          account: !!account,
+          paymentToken,
+          tokenSymbol: SUPPORTED_TOKENS.find(t => t.address.toLowerCase() === paymentToken.toLowerCase())?.symbol || "USDC",
+          insufficientFundsError: insufficientFundsError || undefined,
+        }}
+        tokenOptions={SUPPORTED_TOKENS.map((token) => {
+          const balanceInfo =
+            address && tokenBalances[token.address] !== undefined
+              ? tokenBalances[token.address]
+              : null;
+
+          let balanceDisplay: string;
+          if (!address) {
+            balanceDisplay = "—";
+          } else if (!balanceInfo) {
+            balanceDisplay = "...";
+          } else {
+            balanceDisplay = balanceInfo.usdValue || formatUSD(0);
+          }
+
+          return {
+            value: token.address,
+            label: token.symbol,
+            balance: balanceDisplay,
+            logo: tokenLogos[token.address],
+          };
+        })}
+        onBidAmountChange={setBidAmountToken}
+        onPaymentTokenChange={setPaymentToken}
+        onPlaceBid={handlePlaceBid}
+        onMakeOffer={handleMakeOffer}
+        onOpenWallet={openWalletModal}
       />
     </div>
   );
