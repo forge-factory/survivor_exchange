@@ -20,6 +20,7 @@ import {
   DEFAULT_PAGE_SIZE,
   DEFAULT_POLL_INTERVAL,
   BEASTS_NFT_CONTRACT_ADDRESS,
+  ADVENTURER_NFT_CONTRACT_ADDRESS,
 } from "../../lib/constants";
 
 export interface AuctionWithNFTs extends Auction {
@@ -185,9 +186,12 @@ export function useAuctions() {
       }
 
       const auctionsWithNFTsData: AuctionWithNFTs[] = [];
-      const targetContractNormalized = normalizeContractAddress(
-        BEASTS_NFT_CONTRACT_ADDRESS,
-      ).toLowerCase();
+
+      // Support both Beasts and Adventurer NFT collections
+      const supportedContracts = new Set([
+        normalizeContractAddress(BEASTS_NFT_CONTRACT_ADDRESS).toLowerCase(),
+        normalizeContractAddress(ADVENTURER_NFT_CONTRACT_ADDRESS).toLowerCase(),
+      ]);
 
       for (const [seller, sellerAuctions] of auctionsBySeller) {
         try {
@@ -215,7 +219,8 @@ export function useAuctions() {
             const nftContract = normalizeContractAddress(
               normalized.contractAddress,
             ).toLowerCase();
-            return nftContract === targetContractNormalized ? [normalized] : [];
+            // Include NFTs from both Beasts and Adventurer collections
+            return supportedContracts.has(nftContract) ? [normalized] : [];
           });
 
           const formattedNFTs = formatNFTs(rawNFTs);
@@ -223,9 +228,14 @@ export function useAuctions() {
           for (const auction of sellerAuctions) {
             const auctionIdStr = String(auction.auction_id);
             const items = itemsByAuction.get(auctionIdStr) || [];
+            // Match NFTs by both tokenId AND contract address
+            // (same tokenId can exist in both Beasts and Adventurer collections)
             const matchedNFTs = formattedNFTs.filter((nft) =>
               items.some(
-                (item) => nft.tokenId === normalizeTokenId(item.token_id),
+                (item) =>
+                  nft.tokenId === normalizeTokenId(item.token_id) &&
+                  normalizeContractAddress(nft.contractAddress).toLowerCase() ===
+                    normalizeContractAddress(item.contract_address).toLowerCase(),
               ),
             );
             const bids = bidsByAuction.get(auctionIdStr) || [];

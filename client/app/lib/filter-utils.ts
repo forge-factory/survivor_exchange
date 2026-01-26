@@ -1,6 +1,7 @@
 import type { FormattedNFT } from "./types";
 import type { FilterState } from "../components/filters/filters";
 import type { AuctionWithNFTs } from "../hooks";
+import { computeBundleStats, computeValueScore } from "./utils/bundle-stats";
 
 function isExpired(auction: AuctionWithNFTs): boolean {
     const endTime = auction.end_time;
@@ -238,8 +239,123 @@ export function sortAuctions(auctions: AuctionWithNFTs[], filters: FilterState):
     return sorted;
 }
 
+/**
+ * Get seconds remaining until auction ends
+ */
+function getSecondsRemaining(endTime?: string): number | null {
+    if (!endTime) return null;
+    try {
+        const endTimeNum = endTime.startsWith("0x") || endTime.startsWith("0X")
+            ? parseInt(endTime, 16)
+            : parseInt(endTime, 10);
+        if (isNaN(endTimeNum) || endTimeNum === 0) return null;
+        const now = Math.floor(Date.now() / 1000);
+        return endTimeNum - now;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Check if auction matches a preset filter
+ * Supports both Beast and Adventurer NFT collections
+ */
+export function matchesPreset(
+    auction: AuctionWithNFTs,
+    preset: FilterState["preset"]
+): boolean {
+    if (!preset) return true;
+
+    const stats = computeBundleStats(auction.nfts);
+    const isActive = Boolean(auction.status && parseInt(auction.status) === 2);
+
+    switch (preset) {
+        case "hot-deals": {
+            // No bids yet + has valuable NFTs (Beasts with power > 100 OR Adventurers with XP > 1000)
+            const hasBids = Boolean(auction.current_bid && parseFloat(auction.current_bid) > 0);
+            const hasValuableBeasts = stats.beastCount > 0 && stats.maxPower > 100;
+            const hasValuableAdventurers = stats.adventurerCount > 0 && stats.maxXP > 1000;
+            return isActive && !hasBids && (hasValuableBeasts || hasValuableAdventurers);
+        }
+
+        case "has-t1":
+            // Only applies to Beasts
+            return stats.hasT1;
+
+        case "shiny-animated":
+            // Only applies to Beasts
+            return stats.hasShiny || stats.hasAnimated;
+
+        case "ending-soon": {
+            // Under 1 hour remaining - applies to all collections
+            const secondsRemaining = getSecondsRemaining(auction.end_time);
+            return isActive && secondsRemaining !== null && secondsRemaining > 0 && secondsRemaining <= 3600;
+        }
+
+        default:
+            return true;
+    }
+}
+
+/**
+ * Sort auctions by bundle metrics
+ */
+export function sortByBundleMetric(
+    auctions: AuctionWithNFTs[],
+    sortType: FilterState["bundleSort"]
+): AuctionWithNFTs[] {
+    if (!sortType) return auctions;
+
+    // Separate active and expired, sort each group, then combine
+    const active = auctions.filter(a => !isExpired(a));
+    const expired = auctions.filter(a => isExpired(a));
+
+    const sortGroup = (group: AuctionWithNFTs[]) => {
+        return [...group].sort((a, b) => {
+            const statsA = computeBundleStats(a.nfts);
+            const statsB = computeBundleStats(b.nfts);
+
+            switch (sortType) {
+                case "highest-power":
+                    return statsB.maxPower - statsA.maxPower;
+
+                case "most-beasts":
+                    return statsB.totalCount - statsA.totalCount;
+
+                case "best-value": {
+                    const parsePrice = (value: string | undefined): number => {
+                        if (!value) return 1;
+                        return value.startsWith('0x') || value.startsWith('0X')
+                            ? parseInt(value, 16) / 1e6
+                            : parseFloat(value) / 1e6;
+                    };
+                    const reserveA = parsePrice(a.starting_price) || 1;
+                    const reserveB = parsePrice(b.starting_price) || 1;
+                    return computeValueScore(statsB, reserveB) - computeValueScore(statsA, reserveA);
+                }
+
+                default:
+                    return 0;
+            }
+        });
+    };
+
+    return [...sortGroup(active), ...sortGroup(expired)];
+}
+
 export function applyFiltersToAuctions(auctions: AuctionWithNFTs[], filters: FilterState): AuctionWithNFTs[] {
-    const filtered = filterAuctions(auctions, filters);
+    let filtered = filterAuctions(auctions, filters);
+
+    // Apply preset filter
+    if (filters.preset) {
+        filtered = filtered.filter(a => matchesPreset(a, filters.preset));
+    }
+
+    // Apply bundle-aware sorting if specified, otherwise use standard sorting
+    if (filters.bundleSort) {
+        return sortByBundleMetric(filtered, filters.bundleSort);
+    }
+
     return sortAuctions(filtered, filters);
 }
 

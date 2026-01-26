@@ -99,6 +99,8 @@ const toast = useToast();
     tokenIdSort: "",
     summitTop15: "",
     timeSort: "ending-soon", // Default to ending soon for urgency
+    preset: "",
+    bundleSort: "",
   });
 
   const [localCurrentPage, setLocalCurrentPage] = useState(currentPage);

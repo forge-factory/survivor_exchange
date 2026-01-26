@@ -20,7 +20,11 @@ export interface FilterState {
     priceSort: string;
     tokenIdSort: string;
     summitTop15: string;
-    timeSort: string; // New: sort by ending time
+    timeSort: string;
+    // Preset filters for quick collector searches
+    preset: "" | "hot-deals" | "has-t1" | "shiny-animated" | "ending-soon";
+    // Bundle-aware sorting
+    bundleSort: "" | "highest-power" | "most-beasts" | "best-value";
 }
 
 interface FiltersProps {
@@ -69,6 +73,8 @@ export default function Filters({ token, filters, onFiltersChange, summitListedC
             tokenIdSort: "",
             summitTop15: "",
             timeSort: "ending-soon", // Keep ending soon as default for urgency
+            preset: "",
+            bundleSort: "",
         });
     }, [onFiltersChange]);
 
@@ -81,9 +87,76 @@ export default function Filters({ token, filters, onFiltersChange, summitListedC
         }
     }, [token]);
 
+    // Toggle preset filter
+    const togglePreset = useCallback((preset: FilterState["preset"]) => {
+        if (filters.preset === preset) {
+            onFiltersChange({ ...filters, preset: "" });
+        } else {
+            onFiltersChange({ ...filters, preset });
+        }
+    }, [filters, onFiltersChange]);
+
     return (
         <div className="w-full overflow-hidden">
             <div className="mb-4 flex flex-col gap-3">
+                {/* Preset Filter Chips - Quick filters for collectors */}
+                {isBeastsCollection && (
+                    <div className="flex flex-wrap gap-2">
+                        <button
+                            type="button"
+                            onClick={() => togglePreset("hot-deals")}
+                            title="Auctions with no bids yet and powerful beasts"
+                            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-orbitron uppercase tracking-[0.12em] transition whitespace-nowrap ${
+                                filters.preset === "hot-deals"
+                                    ? "border border-orange-500 bg-orange-500/20 text-orange-400"
+                                    : "border border-orange-500/40 bg-orange-500/10 text-orange-400/80 hover:bg-orange-500/20 hover:text-orange-400"
+                            }`}
+                        >
+                            <span>🔥</span>
+                            <span>Hot Deals</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => togglePreset("has-t1")}
+                            title="Bundles containing at least one Tier 1 beast"
+                            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-orbitron uppercase tracking-[0.12em] transition whitespace-nowrap ${
+                                filters.preset === "has-t1"
+                                    ? "border border-amber-500 bg-amber-500/20 text-amber-400"
+                                    : "border border-amber-500/40 bg-amber-500/10 text-amber-400/80 hover:bg-amber-500/20 hover:text-amber-400"
+                            }`}
+                        >
+                            <span>⭐</span>
+                            <span>Has T1</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => togglePreset("shiny-animated")}
+                            title="Bundles with Shiny or Animated beasts"
+                            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-orbitron uppercase tracking-[0.12em] transition whitespace-nowrap ${
+                                filters.preset === "shiny-animated"
+                                    ? "border border-cyan-400 bg-cyan-400/20 text-cyan-300"
+                                    : "border border-cyan-400/40 bg-cyan-400/10 text-cyan-300/80 hover:bg-cyan-400/20 hover:text-cyan-300"
+                            }`}
+                        >
+                            <span>✨</span>
+                            <span>Rare</span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => togglePreset("ending-soon")}
+                            title="Auctions ending in less than 1 hour"
+                            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-orbitron uppercase tracking-[0.12em] transition whitespace-nowrap ${
+                                filters.preset === "ending-soon"
+                                    ? "border border-red-500 bg-red-500/20 text-red-400"
+                                    : "border border-red-500/40 bg-red-500/10 text-red-400/80 hover:bg-red-500/20 hover:text-red-400"
+                            }`}
+                        >
+                            <span>⏰</span>
+                            <span>&lt;1hr</span>
+                        </button>
+                    </div>
+                )}
+
                 <input
                     type="text"
                     value={filters.search}
@@ -396,6 +469,31 @@ export default function Filters({ token, filters, onFiltersChange, summitListedC
                                 variant="default"
                             />
                         </div>
+
+                        {/* Bundle-aware sorting for collectors */}
+                        {isBeastsCollection && (
+                            <div className="flex flex-col gap-2">
+                                <label className="text-[11px] font-orbitron uppercase tracking-[0.16em] text-[rgb(186,255,188)]/70 flex items-center gap-1.5">
+                                    <svg className="w-3 h-3 text-[rgb(50,255,52)]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                                    </svg>
+                                    Sort by Bundle
+                                    <InfoTooltip content="Sort auctions by aggregate bundle stats: highest power beast, total beasts, or best power-per-dollar value" />
+                                </label>
+                                <CustomDropdown
+                                    id="filter-bundle-sort"
+                                    value={filters.bundleSort}
+                                    onChange={(value) => updateFilter("bundleSort", value as FilterState["bundleSort"])}
+                                    options={[
+                                        { value: "", label: "None" },
+                                        { value: "highest-power", label: "Highest Power" },
+                                        { value: "most-beasts", label: "Most Beasts" },
+                                        { value: "best-value", label: "Best Value (PWR/$)" },
+                                    ]}
+                                    variant="default"
+                                />
+                            </div>
+                        )}
                     </div>
                 </div>
             )}

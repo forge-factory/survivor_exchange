@@ -4,6 +4,7 @@ import type { FormattedNFT } from "../../lib/types";
 import { IMAGE_BASE_URL } from "../../lib/constants";
 import { formatUSDSmart, truncateAuctionName } from "../../lib/utils";
 import { CountdownTimer, BidPriceChart } from "../ui";
+import { computeBundleStats, type BundleStats } from "../../lib/utils/bundle-stats";
 
 type MonsterCollectionCardProps = {
     collection: {
@@ -69,6 +70,11 @@ export default function MonsterCollectionCard({ collection, isSelected, onSelect
         }
         return { level: 'normal', badge: null };
     }, [collection.endTime, collection.highestBid, collection.status]);
+
+    // Compute bundle stats for multi-NFT auctions
+    const bundleStats = useMemo(() => {
+        return computeBundleStats(nfts);
+    }, [nfts]);
 
     const hasBids = collection.highestBid && collection.highestBid > 0;
 
@@ -140,6 +146,88 @@ export default function MonsterCollectionCard({ collection, isSelected, onSelect
                     {collection.totalMonsters} nft{collection.totalMonsters === 1 ? '' : 's'} in this collection
                 </span>
             </header>
+
+            {/* Bundle Highlights - only show for multi-NFT bundles with data */}
+            {bundleStats.totalCount > 1 && (
+                <div className="flex flex-wrap items-center justify-center gap-1.5">
+                    {/* Tier breakdown */}
+                    {([1, 2, 3, 4, 5] as const).map(tier => {
+                        const count = bundleStats.tierCounts[tier];
+                        if (count === 0) return null;
+                        const tierColors: Record<number, string> = {
+                            1: 'bg-amber-500/20 text-amber-400 border-amber-500/40',
+                            2: 'bg-purple-500/20 text-purple-400 border-purple-500/40',
+                            3: 'bg-blue-500/20 text-blue-400 border-blue-500/40',
+                            4: 'bg-green-500/20 text-green-400 border-green-500/40',
+                            5: 'bg-gray-500/20 text-gray-400 border-gray-500/40',
+                        };
+                        return (
+                            <span
+                                key={tier}
+                                className={`px-1.5 py-0.5 rounded text-[8px] font-orbitron uppercase border ${tierColors[tier]}`}
+                                title={`${count} Tier ${tier} beast${count > 1 ? 's' : ''}`}
+                            >
+                                T{tier}:{count}
+                            </span>
+                        );
+                    })}
+
+                    {/* Peak stats */}
+                    {bundleStats.maxPower > 0 && (
+                        <span
+                            className="px-1.5 py-0.5 rounded text-[8px] font-orbitron border border-[rgb(50,255,52)]/30 bg-[rgb(50,255,52)]/10 text-[rgb(50,255,52)]"
+                            title={`Highest power in bundle: ${bundleStats.maxPower}`}
+                        >
+                            ⚡{bundleStats.maxPower}
+                        </span>
+                    )}
+                    {bundleStats.maxLevel > 0 && (
+                        <span
+                            className="px-1.5 py-0.5 rounded text-[8px] font-orbitron border border-cyan-500/30 bg-cyan-500/10 text-cyan-400"
+                            title={`Highest level in bundle: ${bundleStats.maxLevel}`}
+                        >
+                            Lv{bundleStats.maxLevel}
+                        </span>
+                    )}
+
+                    {/* Type distribution */}
+                    <span className="flex gap-1 text-[8px] font-orbitron">
+                        {bundleStats.typeCounts.Brute > 0 && (
+                            <span className="text-red-400" title={`${bundleStats.typeCounts.Brute} Brute${bundleStats.typeCounts.Brute > 1 ? 's' : ''}`}>
+                                B:{bundleStats.typeCounts.Brute}
+                            </span>
+                        )}
+                        {bundleStats.typeCounts.Hunter > 0 && (
+                            <span className="text-green-400" title={`${bundleStats.typeCounts.Hunter} Hunter${bundleStats.typeCounts.Hunter > 1 ? 's' : ''}`}>
+                                H:{bundleStats.typeCounts.Hunter}
+                            </span>
+                        )}
+                        {bundleStats.typeCounts.Magical > 0 && (
+                            <span className="text-purple-400" title={`${bundleStats.typeCounts.Magical} Magical`}>
+                                M:{bundleStats.typeCounts.Magical}
+                            </span>
+                        )}
+                    </span>
+
+                    {/* Rarity badges */}
+                    {bundleStats.hasShiny && (
+                        <span
+                            className="px-1.5 py-0.5 rounded text-[8px] font-orbitron border border-yellow-400/40 bg-yellow-400/10 text-yellow-300"
+                            title={`${bundleStats.shinyCount} Shiny beast${bundleStats.shinyCount > 1 ? 's' : ''}`}
+                        >
+                            ✨{bundleStats.shinyCount}
+                        </span>
+                    )}
+                    {bundleStats.hasAnimated && (
+                        <span
+                            className="px-1.5 py-0.5 rounded text-[8px] font-orbitron border border-cyan-400/40 bg-cyan-400/10 text-cyan-300"
+                            title={`${bundleStats.animatedCount} Animated beast${bundleStats.animatedCount > 1 ? 's' : ''}`}
+                        >
+                            🎬{bundleStats.animatedCount}
+                        </span>
+                    )}
+                </div>
+            )}
 
             <div className="flex flex-col items-center gap-4 text-center">
                 <div className="h-24 w-24">

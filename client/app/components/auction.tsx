@@ -86,6 +86,8 @@ export default function Auction({ nfts: externalNfts, loading: externalLoading, 
         tokenIdSort: "",
         summitTop15: "",
         timeSort: "",
+        preset: "",
+        bundleSort: "",
     });
 
     // Fetch top 15 summit beasts
