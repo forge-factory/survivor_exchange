@@ -9,6 +9,7 @@ import Filters, { FilterState } from "./filters";
 import AuctionSkeleton from "./auction-skeleton";
 import CustomDropdown from "./custom-dropdown";
 import BeastDetailModal from "./beast-detail-modal";
+import AdventurerDetailModal from "./adventurer-detail-modal";
 import type { FormattedNFT } from "../lib/types";
 import { applyFiltersToNFTs } from "../lib/filter-utils";
 import { AUCTION_CONTRACT_ADDRESS, DEFAULT_PAGE_SIZE, DEFAULT_AUCTION_DURATION_MINUTES, SUPPORTED_TOKENS, USDC_ADDRESS, MAX_AUCTION_NFT_SELECTION, COLLECTIONS, CollectionType, DEFAULT_COLLECTION } from "../lib/constants";
@@ -695,17 +696,31 @@ export default function Auction({ nfts: externalNfts, loading: externalLoading, 
             <Filters filters={filters} onFiltersChange={setFilters} summitListedCount={selectedCollection === "beasts" ? summitListedCount : 0} collection={selectedCollection} />
             {renderContent()}
 
-            <BeastDetailModal
-                isOpen={isBeastModalOpen}
-                onClose={() => setIsBeastModalOpen(false)}
-                nfts={filteredNFTs}
-                currentIndex={selectedBeastIndex}
-                onNavigate={(index) => setSelectedBeastIndex(index)}
-                onSelect={(tokenId) => {
-                    toggleCardSelection(tokenId);
-                }}
-                isSelected={filteredNFTs[selectedBeastIndex] ? selectedNFTIds.includes(filteredNFTs[selectedBeastIndex].tokenId) : false}
-            />
+            {selectedCollection === "beasts" ? (
+                <BeastDetailModal
+                    isOpen={isBeastModalOpen}
+                    onClose={() => setIsBeastModalOpen(false)}
+                    nfts={filteredNFTs}
+                    currentIndex={selectedBeastIndex}
+                    onNavigate={(index) => setSelectedBeastIndex(index)}
+                    onSelect={(tokenId) => {
+                        toggleCardSelection(tokenId);
+                    }}
+                    isSelected={filteredNFTs[selectedBeastIndex] ? selectedNFTIds.includes(filteredNFTs[selectedBeastIndex].tokenId) : false}
+                />
+            ) : (
+                <AdventurerDetailModal
+                    isOpen={isBeastModalOpen}
+                    onClose={() => setIsBeastModalOpen(false)}
+                    nfts={filteredNFTs}
+                    currentIndex={selectedBeastIndex}
+                    onNavigate={(index) => setSelectedBeastIndex(index)}
+                    onSelect={(tokenId) => {
+                        toggleCardSelection(tokenId);
+                    }}
+                    isSelected={filteredNFTs[selectedBeastIndex] ? selectedNFTIds.includes(filteredNFTs[selectedBeastIndex].tokenId) : false}
+                />
+            )}
         </div>
     );
 }
