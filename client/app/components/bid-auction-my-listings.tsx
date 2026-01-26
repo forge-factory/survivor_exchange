@@ -6,8 +6,7 @@ import Auction from "./auction";
 import Bids from "./bids";
 import MyListings from "./my-listings";
 import type { FormattedNFT, AuctionItem } from "../lib/types";
-import { AuctionWithNFTs } from "../hooks/use-auctions";
-import { FormattedListing } from "../hooks/use-my-listings";
+import { type AuctionWithNFTs, type FormattedListing } from "../hooks";
 
 interface BidAuctionMyListingsProps {
     nfts?: FormattedNFT[];

@@ -2,9 +2,10 @@ import Image from "next/image";
 import moment from "moment";
 import { useAccount, useExplorer, useProvider } from "@starknet-react/core";
 import { useState, useCallback, useMemo, useEffect } from "react";
-import MyListingsSkeleton from "./my-listings-skeleton";
-import AddressDisplay from "./address-display";
-import { FormattedListing, FormattedOffer } from "../hooks/use-my-listings";
+import { MyListingsSkeleton } from "./skeletons";
+import { AddressDisplay } from "./ui";
+import { type FormattedListing, type FormattedOffer } from "../hooks";
+import { useToast } from "../providers/toast-provider";
 import {
   AUCTION_CONTRACT_ADDRESS,
   USDC_ADDRESS,
@@ -18,7 +19,7 @@ import {
 import { normalizeContractAddress } from "../lib/utils/normalization";
 import { uint256, num } from "starknet";
 import { getQuotes, quoteToCalls } from "@avnu/avnu-sdk";
-import Pagination from "./pagination";
+import { Pagination } from "./ui";
 
 const formatTimeAgo = (timestamp: string): string => {
   if (!timestamp) return "Unknown";
@@ -109,6 +110,7 @@ export default function MyListings({
   const { account, address } = useAccount();
   const explorer = useExplorer();
   const provider = useProvider();
+  const toast = useToast();
   const [isEndingAuction, setIsEndingAuction] = useState<string | null>(null);
   const [txnHashes, setTxnHashes] = useState<Record<string, string>>({});
   const [isSettling, setIsSettling] = useState<string | null>(null);
@@ -171,22 +173,17 @@ export default function MyListings({
           ...prev,
           [auctionId]: response.transaction_hash,
         }));
+
+        toast.success("Auction ended", "Transaction submitted successfully");
       } catch (err) {
         console.error("Error ending auction - contract call failed:", err);
-        if (err instanceof Error) {
-          console.error("Error message:", err.message);
-          console.error("Error stack:", err.stack);
-        }
-        console.error("Failed call details:", {
-          contract: AUCTION_CONTRACT_ADDRESS,
-          entrypoint: "end_auction",
-          auctionId: auctionId,
-        });
+        const errorMessage = err instanceof Error ? err.message : "Unknown error occurred";
+        toast.error("Failed to end auction", errorMessage);
       } finally {
         setIsEndingAuction(null);
       }
     },
-    [account],
+    [account, toast],
   );
 
   const isAuctionExpired = (endTime: string, status: string): boolean => {
@@ -240,6 +237,8 @@ export default function MyListings({
             [auctionId]: response.transaction_hash,
           }));
 
+          toast.success("Auction settled", "NFTs have been returned");
+
           try {
             await new Promise((resolve) => setTimeout(resolve, 2000));
             const canSettleResult = await provider.provider.callContract({
@@ -260,6 +259,8 @@ export default function MyListings({
           }
         } catch (err) {
           console.error("Error settling auction - contract call failed:", err);
+          const errorMessage = err instanceof Error ? err.message : "Unknown error occurred";
+          toast.error("Failed to settle auction", errorMessage);
         } finally {
           setIsSettling(null);
         }
@@ -391,6 +392,8 @@ export default function MyListings({
           [auctionId]: response.transaction_hash,
         }));
 
+        toast.success("Auction settled", "Transaction submitted successfully");
+
         try {
           await new Promise((resolve) => setTimeout(resolve, 2000));
           const canSettleResult = await provider.provider.callContract({
@@ -411,25 +414,19 @@ export default function MyListings({
         }
       } catch (err) {
         console.error("Error settling auction - contract call failed:", err);
-        if (err instanceof Error) {
-          console.error("Error message:", err.message);
-          console.error("Error stack:", err.stack);
-        }
-        console.error("Failed call details:", {
-          contract: AUCTION_CONTRACT_ADDRESS,
-          entrypoint: "settle_auction",
-          auctionId: auctionId,
-        });
+        const errorMessage = err instanceof Error ? err.message : "Unknown error occurred";
+        toast.error("Failed to settle auction", errorMessage);
       } finally {
         setIsSettling(null);
       }
     },
-    [account, address, listings, provider],
+    [account, address, listings, provider, toast],
   );
 
   const handleAcceptOffer = useCallback(
     async (auctionId: string, buyerAddress: string) => {
       if (!account) {
+        toast.warning("Wallet not connected", "Please connect your wallet to accept offers");
         return;
       }
 
@@ -446,18 +443,23 @@ export default function MyListings({
           ...prev,
           [`${auctionId}-accept`]: response.transaction_hash,
         }));
+
+        toast.success("Offer accepted", "Transaction submitted successfully");
       } catch (err) {
         console.error("Error accepting offer:", err);
+        const errorMessage = err instanceof Error ? err.message : "Unknown error occurred";
+        toast.error("Failed to accept offer", errorMessage);
       } finally {
         setIsAcceptingOffer(null);
       }
     },
-    [account],
+    [account, toast],
   );
 
   const handleRejectOffer = useCallback(
     async (auctionId: string, buyerAddress: string) => {
       if (!account) {
+        toast.warning("Wallet not connected", "Please connect your wallet to reject offers");
         return;
       }
 
@@ -474,13 +476,17 @@ export default function MyListings({
           ...prev,
           [`${auctionId}-reject`]: response.transaction_hash,
         }));
+
+        toast.success("Offer rejected", "Transaction submitted successfully");
       } catch (err) {
         console.error("Error rejecting offer:", err);
+        const errorMessage = err instanceof Error ? err.message : "Unknown error occurred";
+        toast.error("Failed to reject offer", errorMessage);
       } finally {
         setIsRejectingOffer(null);
       }
     },
-    [account],
+    [account, toast],
   );
 
   const toggleOffers = useCallback((auctionId: string) => {

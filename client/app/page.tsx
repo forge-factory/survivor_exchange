@@ -2,13 +2,10 @@
 
 import { useMemo } from "react";
 import BidAuctionMyListings from "./components/bid-auction-my-listings";
-import Footer from "./components/footer";
-import Hero from "./components/hero";
+import { Footer, Hero } from "./components/layout";
 import BeastUrlHandler from "./components/beast-url-handler";
 import { useAccount } from "@starknet-react/core";
-import { useMyNFTs } from "./hooks/use-my-nfts";
-import { useAuctions } from "./hooks/use-auctions";
-import { useMyListings } from "./hooks/use-my-listings";
+import { useMyNFTs, useAuctions, useMyListings } from "./hooks";
 import { useSearchParams } from "next/navigation";
 
 export default function Home() {

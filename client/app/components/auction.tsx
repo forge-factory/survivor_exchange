@@ -1,23 +1,18 @@
 import { useCallback, useMemo, useState, useEffect } from "react";
 import { useAccount, useExplorer } from "@starknet-react/core";
 import { byteArray } from "starknet";
-import MonsterCard from "./monster-card";
-import AdventurerCard from "./adventurer-card";
-import CollectionSelector from "./collection-selector";
-import Pagination from "./pagination";
-import Filters, { FilterState } from "./filters";
-import AuctionSkeleton from "./auction-skeleton";
-import CustomDropdown from "./custom-dropdown";
-import BeastDetailModal from "./beast-detail-modal";
-import AdventurerDetailModal from "./adventurer-detail-modal";
+import { MonsterCard, AdventurerCard } from "./cards";
+import { CollectionSelector, Pagination, CustomDropdown } from "./ui";
+import { Filters, type FilterState } from "./filters";
+import { AuctionSkeleton } from "./skeletons";
+import { BeastDetailModal, AdventurerDetailModal } from "./modals";
 import type { FormattedNFT } from "../lib/types";
+import { useToast } from "../providers/toast-provider";
 import { applyFiltersToNFTs } from "../lib/filter-utils";
 import { AUCTION_CONTRACT_ADDRESS, DEFAULT_PAGE_SIZE, DEFAULT_AUCTION_DURATION_MINUTES, SUPPORTED_TOKENS, USDC_ADDRESS, MAX_AUCTION_NFT_SELECTION, COLLECTIONS, CollectionType, DEFAULT_COLLECTION } from "../lib/constants";
 import { fetchTokens } from "@avnu/avnu-sdk";
 import { normalizeContractAddress } from "../lib/utils/normalization";
-import { useSummitLeaderboard, findMatchingSummitBeast } from "../hooks/use-summit-leaderboard";
-import { useMyNFTs } from "../hooks/use-my-nfts";
-import { useMyAdventurerNFTs } from "../hooks/use-my-adventurer-nfts";
+import { useSummitLeaderboard, findMatchingSummitBeast, useMyNFTs, useMyAdventurerNFTs } from "../hooks";
 
 interface AuctionProps {
     nfts?: FormattedNFT[];
@@ -43,6 +38,7 @@ export default function Auction({ nfts: externalNfts, loading: externalLoading, 
     const error = selectedCollection === "beasts" ? beastsError : adventurerError;
     const { account, address } = useAccount();
     const explorer = useExplorer();
+    const toast = useToast();
     const [currentPage, setCurrentPage] = useState(1);
     const [selectedNFTIds, setSelectedNFTIds] = useState<string[]>([]);
     const [collectionName, setCollectionName] = useState<string>("");
@@ -315,23 +311,18 @@ export default function Auction({ nfts: externalNfts, loading: externalLoading, 
             });
 
             const response = await account.execute(calls);
-        
+
             setTxnHash(response.transaction_hash);
+            toast.success("Auction created", "Your NFTs have been listed for auction");
         } catch (err) {
             console.error("Error creating auction - contract call failed:", err);
-            if (err instanceof Error) {
-                console.error("Error message:", err.message);
-                console.error("Error stack:", err.stack);
-            }
-            console.error("Failed call details:", {
-                contract: AUCTION_CONTRACT_ADDRESS,
-                entrypoint: "create_auction"
-            });
+            const errorMessage = err instanceof Error ? err.message : "Unknown error occurred";
+            toast.error("Failed to create auction", errorMessage);
         } finally {
             setIsSubmitting(false);
         }
 
-    }, [account, hasSelection, startingPriceUSD, collectionName, endDateTime, selectedNFTs, sellerToken, collectionConfig.contractAddress]);
+    }, [account, hasSelection, startingPriceUSD, collectionName, endDateTime, selectedNFTs, sellerToken, collectionConfig.contractAddress, toast]);
 
     const renderContent = () => {
     if (loading) {

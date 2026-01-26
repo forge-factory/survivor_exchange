@@ -2,30 +2,26 @@ import React, { useCallback, useMemo, useState, useEffect, useRef } from "react"
 import { useAccount, useExplorer, useProvider } from "@starknet-react/core";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import MonsterCollectionCard from "./monster-collection-card";
-import AdventurerCollectionCard from "./adventurer-collection-card";
+import { MonsterCollectionCard, AdventurerCollectionCard } from "./cards";
 import { ADVENTURER_NFT_CONTRACT_ADDRESS } from "../lib/constants";
-import Pagination from "./pagination";
-import Filters, { FilterState } from "./filters";
-import BidPriceChart from "./bid-price-chart";
-import BidsSkeleton from "./bids-skeleton";
-import CustomDropdown from "./custom-dropdown";
-import InfoTooltip from "./info-tooltip";
-import BeastDetailModal from "./beast-detail-modal";
-import AdventurerDetailModal from "./adventurer-detail-modal";
-import AddressDisplay from "./address-display";
-import CountdownTimer from "./countdown-timer";
+import { Pagination, BidPriceChart, CustomDropdown, InfoTooltip, AddressDisplay, CountdownTimer } from "./ui";
+import { Filters, type FilterState } from "./filters";
+import { BidsSkeleton } from "./skeletons";
+import { BeastDetailModal, AdventurerDetailModal } from "./modals";
+import { AuctionTimeline } from "./bid-components";
 import { useWalletModal } from "../providers/wallet-modal-provider";
-import type { AuctionItem, FormattedNFT } from "../lib/types";
-import { AuctionWithNFTs } from "../hooks/use-auctions";
-import { useBeastSkullRewards } from "../hooks/use-beast-skull-rewards";
-import { useSummitLeaderboard, findMatchingSummitBeast, SummitBeast } from "../hooks/use-summit-leaderboard";
+import { useToast } from "../providers/toast-provider";
+import type { AuctionItem, FormattedNFT, Collection, UserOffer } from "../lib/types";
+import { AuctionWithNFTs, useBeastSkullRewards, useSummitLeaderboard, findMatchingSummitBeast, type SummitBeast } from "../hooks";
 import { uint256 } from "starknet";
 import {
   formatUSD,
   formatUSDSmart,
   formatTokenAmount,
   truncateAuctionName,
+  getStatusLabel,
+  getStatusStyle,
+  isAuctionExpired,
 } from "../lib/utils";
 import { applyFiltersToAuctions } from "../lib/filter-utils";
 import {
@@ -43,60 +39,8 @@ import {
   shouldRefetchPrice,
 } from "../lib/utils/token-price-cache";
 
-const getStatusLabel = (status: string): string => {
-  const statusNum = parseInt(status);
-
-  if (statusNum === 0) return "None";
-  if (statusNum === 1) return "Draft";
-  if (statusNum === 2) return "Active";
-  if (statusNum === 3) return "Ended";
-  if (statusNum === 4) return "Settled";
-  if (statusNum === 5) return "Canceled";
-
-  return status;
-};
-
-const getStatusStyle = (status: string): string => {
-  const statusNum = parseInt(status);
-
-  if (statusNum === 0) {
-    return "bg-white/10 text-white/50 border border-white/20";
-  }
-  if (statusNum === 1) {
-    return "bg-yellow-400/10 text-yellow-300 border border-yellow-300/30";
-  }
-  if (statusNum === 2) {
-    return "bg-[rgb(50,255,52)]/10 text-[rgb(50,255,52)] border border-[rgb(50,255,52)]/40";
-  }
-  if (statusNum === 3) {
-    return "bg-white/10 text-white border border-white/20";
-  }
-  if (statusNum === 4) {
-    return "bg-blue-400/10 text-blue-300 border border-blue-300/30";
-  }
-  if (statusNum === 5) {
-    return "bg-red-400/10 text-red-300 border border-red-300/30";
-  }
-
-  if (status === "pending" || status === "queued") {
-    return "bg-yellow-400/10 text-yellow-300 border border-yellow-300/30";
-  }
-  return "bg-white/10 text-white border border-white/20";
-};
-
-type Collection = {
-  id: string;
-  name: string;
-  totalMonsters: number;
-  startingPrice: number;
-  highestBid?: number;
-  image: string;
-  status: string;
-  endTime: string;
-  sellerFull: string;
-  highestBidderFull: string;
-  executedAt?: string;
-};
+// getStatusLabel, getStatusStyle, and isAuctionExpired are imported from ../lib/utils
+// Collection and UserOffer types are imported from ../lib/types
 
 interface BidsProps {
   auctions: AuctionWithNFTs[];
@@ -123,6 +67,7 @@ export default function Bids({
   const provider = useProvider();
   const { openWalletModal } = useWalletModal();
   const router = useRouter();
+  const toast = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [txnHash, setTxnHash] = useState<string | undefined>();
   const [insufficientFundsError, setInsufficientFundsError] = useState<
@@ -133,13 +78,7 @@ export default function Bids({
   const [isRefunded, setIsRefunded] = useState(false);
   const [isSubmittingOffer, setIsSubmittingOffer] = useState(false);
   const [offerTxnHash, setOfferTxnHash] = useState<string | undefined>();
-  const [userOffer, setUserOffer] = useState<{
-    buyer: string;
-    amount: number;
-    status: string;
-    createdAt: string;
-    expiresAt: string;
-  } | null>(null);
+  const [userOffer, setUserOffer] = useState<UserOffer | null>(null);
   const [isWithdrawingOffer, setIsWithdrawingOffer] = useState(false);
   const [withdrawOfferTxnHash, setWithdrawOfferTxnHash] = useState("");
   const [filters, setFilters] = useState<FilterState>({
@@ -1246,10 +1185,15 @@ export default function Bids({
       const response = await account.execute(calls);
       setTxnHash(response.transaction_hash);
       setBidAmountToken("");
+      toast.success("Bid placed", "Your bid has been submitted successfully");
     } catch (err) {
       console.error("Error placing bid:", err);
       if (err instanceof Error && err.message.includes("balance")) {
         setInsufficientFundsError("Insufficient funds");
+        toast.error("Insufficient funds", "You don't have enough balance to place this bid");
+      } else {
+        const errorMessage = err instanceof Error ? err.message : "Unknown error occurred";
+        toast.error("Failed to place bid", errorMessage);
       }
     } finally {
       setIsSubmitting(false);
@@ -1266,6 +1210,7 @@ export default function Bids({
     provider,
     isValidPrice,
     selectedCollection,
+    toast,
   ]);
 
   const handleMakeOffer = useCallback(async () => {
@@ -1537,10 +1482,15 @@ export default function Bids({
       const response = await account.execute(calls);
       setOfferTxnHash(response.transaction_hash);
       setBidAmountToken("");
+      toast.success("Offer submitted", "Your offer has been sent to the seller");
     } catch (err) {
       console.error("Error making offer:", err);
       if (err instanceof Error && err.message.includes("balance")) {
         setInsufficientFundsError("Insufficient funds");
+        toast.error("Insufficient funds", "You don't have enough balance to make this offer");
+      } else {
+        const errorMessage = err instanceof Error ? err.message : "Unknown error occurred";
+        toast.error("Failed to make offer", errorMessage);
       }
     } finally {
       setIsSubmittingOffer(false);
@@ -1555,6 +1505,7 @@ export default function Bids({
     paymentToken,
     tokenPrice,
     isValidPrice,
+    toast,
   ]);
 
   const handleWithdrawOffer = useCallback(async () => {
@@ -1578,38 +1529,17 @@ export default function Bids({
 
       const response = await account.execute(calls);
       setWithdrawOfferTxnHash(response.transaction_hash);
+      toast.success("Offer withdrawn", "Your offer has been cancelled");
     } catch (error) {
       console.error("Error withdrawing offer:", error);
+      const errorMessage = error instanceof Error ? error.message : "Unknown error occurred";
+      toast.error("Failed to withdraw offer", errorMessage);
     } finally {
       setIsWithdrawingOffer(false);
     }
-  }, [account, selectedCollectionId, userOffer]);
+  }, [account, selectedCollectionId, userOffer, toast]);
 
-  const isAuctionExpired = useCallback(
-    (endTime: string, status: string): boolean => {
-      if (!endTime || endTime === "0") return false;
-
-      try {
-        let endTimeNum: number;
-        if (endTime.startsWith("0x") || endTime.startsWith("0X")) {
-          endTimeNum = parseInt(endTime, 16);
-        } else {
-          endTimeNum = parseInt(endTime, 10);
-        }
-
-        if (isNaN(endTimeNum) || endTimeNum === 0) return false;
-
-        const now = Math.floor(Date.now() / 1000);
-        const statusNum = parseInt(status);
-
-        // Expired if end time passed or status is Ended (3)
-        return endTimeNum <= now || statusNum === 3;
-      } catch {
-        return false;
-      }
-    },
-    [],
-  );
+  // isAuctionExpired is now imported from ../lib/utils
 
   const handleSettleAuction = useCallback(async () => {
     if (
@@ -1655,6 +1585,7 @@ export default function Bids({
         });
 
         setSettleTxnHash(response.transaction_hash);
+        toast.success("Auction settled", "NFTs have been returned");
 
         try {
           await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -1673,6 +1604,8 @@ export default function Bids({
         }
       } catch (err) {
         console.error("Error settling auction:", err);
+        const errorMessage = err instanceof Error ? err.message : "Unknown error occurred";
+        toast.error("Failed to settle auction", errorMessage);
       } finally {
         setIsSettling(false);
       }
@@ -1802,6 +1735,7 @@ export default function Bids({
 
       const response = await account.execute(calls);
       setSettleTxnHash(response.transaction_hash);
+      toast.success("Auction settled", "Transaction submitted successfully");
 
       try {
         await new Promise((resolve) => setTimeout(resolve, 2000));
@@ -1820,15 +1754,8 @@ export default function Bids({
       }
     } catch (err) {
       console.error("Error settling auction - contract call failed:", err);
-      if (err instanceof Error) {
-        console.error("Error message:", err.message);
-        console.error("Error stack:", err.stack);
-      }
-      console.error("Failed call details:", {
-        contract: AUCTION_CONTRACT_ADDRESS,
-        entrypoint: "settle_auction",
-        auctionId: selectedCollectionId,
-      });
+      const errorMessage = err instanceof Error ? err.message : "Unknown error occurred";
+      toast.error("Failed to settle auction", errorMessage);
     } finally {
       setIsSettling(false);
     }
@@ -1838,6 +1765,7 @@ export default function Bids({
     selectedCollectionId,
     paginatedFilteredAuctions,
     provider,
+    toast,
   ]);
 
   const updateSelection = useCallback((collection: Collection | undefined) => {
@@ -2277,170 +2205,12 @@ export default function Bids({
                     />
                   </div>
                 )}
-                {(() => {
-                  const statusNum = parseInt(selectedCollection.status);
-                  const formatTime = (timestamp: string) => {
-                    try {
-                      let timestampNum: number;
-                      if (
-                        timestamp.startsWith("0x") ||
-                        timestamp.startsWith("0X")
-                      ) {
-                        timestampNum = parseInt(timestamp, 16);
-                      } else {
-                        timestampNum = parseInt(timestamp, 10);
-                      }
-                      if (isNaN(timestampNum) || timestampNum === 0)
-                        return null;
-                      const date = new Date(timestampNum * 1000);
-                      return date.toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      });
-                    } catch {
-                      return null;
-                    }
-                  };
-
-                  const endTimeFormatted = selectedCollection.endTime
-                    ? formatTime(selectedCollection.endTime)
-                    : null;
-
-                  const formatExecutedAt = (executedAt: string | undefined) => {
-                    if (!executedAt) return null;
-                    try {
-                      const date = new Date(executedAt);
-                      return date.toLocaleDateString("en-US", {
-                        month: "short",
-                        day: "numeric",
-                        year: "numeric",
-                      });
-                    } catch {
-                      return null;
-                    }
-                  };
-
-                  const executedAtFormatted = formatExecutedAt(
-                    selectedCollection.executedAt,
-                  );
-
-                  const timelineItems = [];
-
-                  timelineItems.push({
-                    status: "created",
-                    label: "Auction Created",
-                    active: true,
-                    completed: true,
-                    time: executedAtFormatted || undefined,
-                  });
-
-                  if (selectedCollection.endTime) {
-                    timelineItems.push({
-                      status: "settled",
-                      label: "Auction Settled",
-                      active: statusNum >= 3,
-                      completed: statusNum >= 3,
-                      time: endTimeFormatted,
-                    });
-                  }
-
-                  return (
-                    <div className="w-full mt-1">
-                      <div className="w-full rounded-2xl border border-[rgb(50,255,52)]/20 bg-[rgb(50,255,52)]/5 p-3 md:p-4">
-                        <p className="text-[10px] font-orbitron uppercase tracking-[0.18em] text-[rgb(186,255,188)]/70 mb-2 md:mb-3">
-                          Auction Timeline
-                        </p>
-                        <div className="flex flex-col gap-3">
-                          {timelineItems.map((item, index) => {
-                            const isLast = index === timelineItems.length - 1;
-                            return (
-                              <div
-                                key={item.status}
-                                className="relative flex items-start gap-3"
-                              >
-                                <div className="flex flex-col items-center">
-                                  <div
-                                    className={`w-3 h-3 rounded-full border-2 ${
-                                      item.completed
-                                        ? "bg-[rgb(50,255,52)] border-[rgb(50,255,52)]"
-                                        : item.active
-                                          ? "bg-[rgb(50,255,52)]/30 border-[rgb(50,255,52)] animate-pulse"
-                                          : "bg-transparent border-[rgb(186,255,188)]/30"
-                                    }`}
-                                  />
-                                  {!isLast && (
-                                    <div
-                                      className={`w-0.5 h-full min-h-[30px] mt-1 ${
-                                        item.completed || item.active
-                                          ? "bg-[rgb(50,255,52)]/30"
-                                          : "bg-[rgb(186,255,188)]/10"
-                                      }`}
-                                    />
-                                  )}
-                                </div>
-                                <div className="flex-1">
-                                  <p
-                                    className={`text-xs font-orbitron uppercase tracking-[0.12em] ${
-                                      item.active
-                                        ? "text-[rgb(50,255,52)]"
-                                        : "text-[rgb(186,255,188)]/70"
-                                    }`}
-                                  >
-                                    {item.label}
-                                  </p>
-                                  {item.time && (
-                                    <p className="text-[10px] text-[rgb(186,255,188)]/50 mt-1">
-                                      {item.time}
-                                    </p>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                        {/* Countdown inside the same box */}
-                        <div className="mt-3 pt-3 border-t border-[rgb(50,255,52)]/20">
-                          <p className="text-[10px] font-orbitron uppercase tracking-[0.16em] text-[rgb(50,255,52)] mb-1">
-                            COUNTDOWN
-                          </p>
-                          {countdown ? (
-                            <div className="flex items-baseline gap-1.5 flex-wrap">
-                              <span className="text-white font-orbitron text-base tracking-wider">
-                                {countdown.days}
-                              </span>
-                              <span className="text-[rgb(186,255,188)]/70 font-orbitron text-[10px] tracking-wider">
-                                days
-                              </span>
-                              <span className="text-white font-orbitron text-base tracking-wider">
-                                {countdown.hours}
-                              </span>
-                              <span className="text-[rgb(186,255,188)]/70 font-orbitron text-[10px] tracking-wider">
-                                hrs
-                              </span>
-                              <span className="text-white font-orbitron text-base tracking-wider">
-                                {countdown.minutes}
-                              </span>
-                              <span className="text-[rgb(186,255,188)]/70 font-orbitron text-[10px] tracking-wider">
-                                Mins
-                              </span>
-                              <span className="text-white font-orbitron text-base tracking-wider">
-                                {countdown.seconds}
-                              </span>
-                              <span className="text-[rgb(186,255,188)]/70 font-orbitron text-[10px] tracking-wider">
-                                Secs
-                              </span>
-                            </div>
-                          ) : (
-                            <p className="text-[rgb(186,255,188)]/70 text-[10px] font-orbitron uppercase">
-                              Auction ended
-                            </p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })()}
+                <AuctionTimeline
+                  status={selectedCollection.status}
+                  endTime={selectedCollection.endTime}
+                  executedAt={selectedCollection.executedAt}
+                  countdown={countdown}
+                />
 
                 <div className="flex items-center gap-3">
                   <p

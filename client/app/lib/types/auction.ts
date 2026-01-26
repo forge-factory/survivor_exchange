@@ -92,3 +92,32 @@ export interface ConsolidatedDataResponse {
     edges: AuctionNode[];
   };
 }
+
+/**
+ * Collection represents the display format for an auction in the UI
+ */
+export interface Collection {
+  id: string;
+  name: string;
+  fullName?: string;
+  totalMonsters: number;
+  startingPrice: number;
+  highestBid?: number;
+  image: string;
+  status: string;
+  endTime: string;
+  sellerFull: string;
+  highestBidderFull: string;
+  executedAt?: string;
+}
+
+/**
+ * User's active offer on an auction
+ */
+export interface UserOffer {
+  buyer: string;
+  amount: number;
+  status: string;
+  createdAt: string;
+  expiresAt: string;
+}

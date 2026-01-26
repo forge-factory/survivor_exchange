@@ -3,12 +3,14 @@ import { Orbitron } from "next/font/google";
 import { GeistMono } from "geist/font/mono";
 import { Suspense } from "react";
 import "./globals.css";
-import Header from "./components/header";
-import DisclaimerModal from "./components/disclaimer-modal";
+import { Header } from "./components/layout";
+import { DisclaimerModal } from "./components/modals";
 import { StarknetProvider } from "./providers/starknet-provider";
 import { ApolloGraphQLProvider } from "./providers/apollo-provider";
 import { WalletModalProvider } from "./providers/wallet-modal-provider";
 import { EVMProvider } from "./providers/evm-provider";
+import { ToastProvider } from "./providers/toast-provider";
+import { ErrorBoundary } from "./components/ui";
 
 const orbitron = Orbitron({
   variable: "--font-orbitron",
@@ -51,11 +53,15 @@ export default function RootLayout({
           <ApolloGraphQLProvider>
             <StarknetProvider>
               <WalletModalProvider>
-                <Suspense>
-                  <DisclaimerModal />
-                  <Header />
-                  {children}
-                </Suspense>
+                <ToastProvider>
+                  <ErrorBoundary>
+                    <Suspense>
+                      <DisclaimerModal />
+                      <Header />
+                      {children}
+                    </Suspense>
+                  </ErrorBoundary>
+                </ToastProvider>
               </WalletModalProvider>
             </StarknetProvider>
           </ApolloGraphQLProvider>

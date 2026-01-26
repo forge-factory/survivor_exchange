@@ -1,6 +1,6 @@
 import type { FormattedNFT } from "./types";
-import type { FilterState } from "../components/filters";
-import type { AuctionWithNFTs } from "../hooks/use-auctions";
+import type { FilterState } from "../components/filters/filters";
+import type { AuctionWithNFTs } from "../hooks";
 
 function isExpired(auction: AuctionWithNFTs): boolean {
     const endTime = auction.end_time;
