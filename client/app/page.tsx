@@ -1,15 +1,16 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef, useCallback } from "react";
 import BidAuctionMyListings from "./components/bid-auction-my-listings";
 import { Footer, Hero } from "./components/layout";
 import BeastUrlHandler from "./components/beast-url-handler";
 import { useAccount } from "@starknet-react/core";
 import { useMyNFTs, useAuctions, useMyListings } from "./hooks";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 
 export default function Home() {
   const { address } = useAccount();
+  const router = useRouter();
   const { nfts, loading, error } = useMyNFTs({ address });
   const {
     auctions,
@@ -28,6 +29,17 @@ export default function Home() {
   } = useMyListings({ seller: address || undefined });
   const searchParams = useSearchParams();
   const token = searchParams.get('auction');
+  const bidsRef = useRef<HTMLDivElement>(null);
+
+  // Handle selecting an auction from the hero
+  const handleSelectAuction = useCallback((auctionId: string) => {
+    // Update URL with auction parameter
+    router.push(`/?auction=${auctionId}`, { scroll: false });
+    // Scroll to bids section
+    setTimeout(() => {
+      bidsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 100);
+  }, [router]);
 
   // Calculate platform stats for social proof
   const platformStats = useMemo(() => {
@@ -70,7 +82,10 @@ export default function Home() {
           activeAuctions={platformStats.activeAuctions}
           totalVolume={platformStats.totalVolume}
           totalBids={platformStats.totalBids}
+          allAuctions={allAuctions}
+          onSelectAuction={handleSelectAuction}
         />
+        <div ref={bidsRef}>
         <BidAuctionMyListings 
           nfts={nfts} 
           loading={loading} 
@@ -88,6 +103,7 @@ export default function Home() {
           listingsError={listingsError}
           token={token}
         />
+        </div>
         <Footer />
       </div>
     </div>

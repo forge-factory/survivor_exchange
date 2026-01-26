@@ -170,28 +170,32 @@ export default function AdventurerCollectionCard({
 
             <div className="flex flex-col items-center gap-4 text-center">
                 {/* Image */}
-                <div className="h-24 w-24 rounded-2xl border border-[rgb(50,255,52)]/40 bg-[rgb(50,255,52)]/5 overflow-hidden flex items-center justify-center">
+                <div className="h-24 w-24">
                     {adventurerImage ? (
-                        <img
-                            src={adventurerImage}
-                            alt={collection.name}
-                            draggable={false}
-                            className="h-full w-full object-contain"
-                        />
+                        <div className="h-full w-full overflow-hidden rounded-2xl">
+                            <img
+                                src={adventurerImage}
+                                alt={collection.name}
+                                draggable={false}
+                                className="h-full w-full object-contain"
+                            />
+                        </div>
                     ) : (
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            className="w-12 h-12 text-[rgb(50,255,52)]/40"
-                        >
-                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                            <circle cx="9" cy="7" r="4" />
-                            <path d="m22 8-4 4" />
-                            <path d="m18 8 4 4" />
-                        </svg>
+                        <div className="flex h-full w-full items-center justify-center border border-[rgb(50,255,52)]/40 bg-[rgb(50,255,52)]/12 rounded-2xl">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                className="w-12 h-12 text-[rgb(50,255,52)]/40"
+                            >
+                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                                <circle cx="9" cy="7" r="4" />
+                                <path d="m22 8-4 4" />
+                                <path d="m18 8 4 4" />
+                            </svg>
+                        </div>
                     )}
                 </div>
 
