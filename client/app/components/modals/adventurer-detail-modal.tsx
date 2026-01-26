@@ -247,11 +247,11 @@ export default function AdventurerDetailModal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 overflow-y-auto"
       onClick={onClose}
     >
       <div
-        className={`relative w-full bg-black/95 border-2 border-[rgb(50,255,52)]/60 rounded-2xl shadow-[0_0_40px_rgba(50,255,52,0.2)] overflow-hidden ${
+        className={`relative w-full max-h-[90vh] bg-black/95 border-2 border-[rgb(50,255,52)]/60 rounded-2xl shadow-[0_0_40px_rgba(50,255,52,0.2)] my-auto flex flex-col overflow-hidden ${
           isActiveAuction ? "max-w-2xl" : "max-w-lg"
         }`}
         onClick={(e) => e.stopPropagation()}
@@ -325,7 +325,7 @@ export default function AdventurerDetailModal({
         </div>
 
         {/* Content */}
-        <div className={`p-6 ${isActiveAuction ? "grid grid-cols-1 md:grid-cols-2 gap-6" : "flex flex-col items-center gap-4"}`}>
+        <div className={`p-6 flex-1 overflow-y-auto ${isActiveAuction ? "grid grid-cols-1 md:grid-cols-2 gap-6" : "flex flex-col items-center gap-4"}`}>
           {/* Left column - Image and basic info */}
           <div className="flex flex-col items-center gap-4">
             {/* Image - Large and centered */}
