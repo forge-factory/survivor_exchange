@@ -3,6 +3,8 @@ import { useAccount, useExplorer, useProvider } from "@starknet-react/core";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import MonsterCollectionCard from "./monster-collection-card";
+import AdventurerCollectionCard from "./adventurer-collection-card";
+import { ADVENTURER_NFT_CONTRACT_ADDRESS } from "../lib/constants";
 import Pagination from "./pagination";
 import Filters, { FilterState } from "./filters";
 import BidPriceChart from "./bid-price-chart";
@@ -1921,15 +1923,32 @@ export default function Bids({
             // Show detail panel after the last card in the selected row
             const showDetailAfterThis = index === lastIndexInSelectedRow && selectedCollection;
 
+            // Check if this auction contains Adventurer NFTs
+            const isAdventurerAuction = nfts.length > 0 && nfts.some(nft => {
+              const contractAddr = normalizeContractAddress(nft.contractAddress || '').toLowerCase();
+              const adventurerAddr = normalizeContractAddress(ADVENTURER_NFT_CONTRACT_ADDRESS).toLowerCase();
+              return contractAddr === adventurerAddr;
+            });
+
             return (
               <React.Fragment key={collection.id}>
-                <MonsterCollectionCard
-                  collection={collection}
-                  isSelected={isSelected}
-                  onSelect={() => handleSelectCollection(collection)}
-                  onQuickBid={() => handleQuickBid(collection)}
-                  nfts={nfts}
-                />
+                {isAdventurerAuction ? (
+                  <AdventurerCollectionCard
+                    collection={collection}
+                    isSelected={isSelected}
+                    onSelect={() => handleSelectCollection(collection)}
+                    onQuickBid={() => handleQuickBid(collection)}
+                    nfts={nfts}
+                  />
+                ) : (
+                  <MonsterCollectionCard
+                    collection={collection}
+                    isSelected={isSelected}
+                    onSelect={() => handleSelectCollection(collection)}
+                    onQuickBid={() => handleQuickBid(collection)}
+                    nfts={nfts}
+                  />
+                )}
                 {showDetailAfterThis && (
                   <div className="col-span-1 md:col-span-2 lg:col-span-3">
                     {renderSelectedDetails()}
