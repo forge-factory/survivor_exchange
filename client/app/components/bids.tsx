@@ -67,7 +67,7 @@ export default function Bids({
   const provider = useProvider();
   const { openWalletModal } = useWalletModal();
   const router = useRouter();
-  const toast = useToast();
+const toast = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [txnHash, setTxnHash] = useState<string | undefined>();
   const [insufficientFundsError, setInsufficientFundsError] = useState<
@@ -318,7 +318,7 @@ export default function Bids({
     }
   }, [selectedCollectionId]);
 
-  // Compute adventurer image URL for detail panel when an adventurer auction is selected
+// Compute adventurer image URL for detail panel when an adventurer auction is selected
   useEffect(() => {
     if (!selectedCollectionId) {
       setAdventurerDetailImage(null);
@@ -439,7 +439,7 @@ export default function Bids({
     return directAuction?.nfts || [];
   }, [selectedCollectionId, paginatedFilteredAuctions, auctions]);
 
-  // Create synthetic FormattedNFT[] from auction items for adventurer auctions
+// Create synthetic FormattedNFT[] from auction items for adventurer auctions
   const selectedAdventurerNfts = useMemo((): FormattedNFT[] => {
     if (!selectedCollectionId) return [];
 
@@ -1935,7 +1935,7 @@ export default function Bids({
 
             return (
               <React.Fragment key={collection.id}>
-                {isAdventurerAuction ? (
+{isAdventurerAuction ? (
                   <AdventurerCollectionCard
                     collection={collection}
                     isSelected={isSelected}
@@ -3059,7 +3059,7 @@ export default function Bids({
         onMakeOffer={handleMakeOffer}
         onOpenWallet={openWalletModal}
         summitBeasts={auctionSummitBeasts}
-      />
+/>
 
       <AdventurerDetailModal
         isOpen={isAdventurerModalOpen}

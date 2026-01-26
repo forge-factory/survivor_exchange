@@ -53,7 +53,7 @@ export default function RootLayout({
           <ApolloGraphQLProvider>
             <StarknetProvider>
               <WalletModalProvider>
-                <ToastProvider>
+<ToastProvider>
                   <ErrorBoundary>
                     <Suspense>
                       <DisclaimerModal />

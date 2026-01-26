@@ -363,7 +363,7 @@ export default function Auction({ nfts: externalNfts, loading: externalLoading, 
                 </div>
                 <div className="text-center">
                     <p className="text-lg text-[rgb(186,255,188)]/70 mb-2">
-                        {emptyStateMessage.title}
+{emptyStateMessage.title}
                     </p>
                     <p className="text-sm text-[rgb(186,255,188)]/50 max-w-md">
                         {emptyStateMessage.description}{" "}
