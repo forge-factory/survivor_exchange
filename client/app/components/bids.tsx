@@ -5,7 +5,7 @@ import Image from "next/image";
 import { MonsterCollectionCard, AdventurerCollectionCard } from "./cards";
 import { ADVENTURER_NFT_CONTRACT_ADDRESS } from "../lib/constants";
 import { Pagination, BidPriceChart, CustomDropdown, InfoTooltip, AddressDisplay, CountdownTimer } from "./ui";
-import { Filters, type FilterState } from "./filters";
+import { Filters, FilterCoaching, type FilterState } from "./filters";
 import { BidsSkeleton } from "./skeletons";
 import { BeastDetailModal, AdventurerDetailModal } from "./modals";
 import { AuctionTimeline } from "./bid-components";
@@ -1869,33 +1869,51 @@ const toast = useToast();
     }
 
     if (collections.length === 0) {
+      // If there are auctions but none match filters, show filter coaching
+      if (auctions.length > 0) {
+        return (
+          <FilterCoaching
+            filters={filters}
+            onFiltersChange={setFilters}
+            totalCount={auctions.length}
+            filteredCount={0}
+          />
+        );
+      }
+
+      // No auctions at all
       return (
         <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-center gap-6 px-4 py-12">
-          <div className="w-20 h-20 rounded-full bg-[rgb(50,255,52)]/10 flex items-center justify-center">
-            <svg className="w-10 h-10 text-[rgb(50,255,52)]/50" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div
+            className="w-20 h-20 rounded-full flex items-center justify-center"
+            style={{
+              backgroundColor: "var(--color-elevated)",
+              border: "1px solid var(--color-border)",
+            }}
+          >
+            <svg
+              className="w-10 h-10"
+              style={{ color: "var(--color-text-muted)" }}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
             </svg>
           </div>
           <div className="text-center">
-            {auctions.length === 0 ? (
-              <>
-                <p className="text-lg text-[rgb(186,255,188)]/70 mb-2">
-                  No active auctions right now
-                </p>
-                <p className="text-sm text-[rgb(186,255,188)]/50 max-w-md">
-                  Be the first to list your beasts! Switch to the &quot;Auction your collection&quot; tab to create an auction.
-                </p>
-              </>
-            ) : (
-              <>
-                <p className="text-lg text-[rgb(186,255,188)]/70 mb-2">
-                  No auctions match your filters
-                </p>
-                <p className="text-sm text-[rgb(186,255,188)]/50 max-w-md">
-                  Try adjusting your search criteria or clear filters to see all available auctions.
-                </p>
-              </>
-            )}
+            <p
+              className="font-display text-lg mb-2"
+              style={{ color: "var(--color-text)" }}
+            >
+              No active auctions right now
+            </p>
+            <p
+              className="text-sm max-w-md"
+              style={{ color: "var(--color-text-muted)" }}
+            >
+              Be the first to list your beasts! Switch to the &quot;Auction your collection&quot; tab to create an auction.
+            </p>
           </div>
         </div>
       );

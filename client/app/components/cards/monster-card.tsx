@@ -7,6 +7,12 @@ type MonsterCardProps = {
   selected: boolean;
   onToggle: () => void;
   onInfoClick?: () => void;
+  // Optional auction context
+  currentBid?: string;
+  bidCount?: number;
+  timeRemaining?: string;
+  watcherCount?: number;
+  isEndingSoon?: boolean;
 };
 
 export default function MonsterCard({
@@ -14,6 +20,11 @@ export default function MonsterCard({
   selected,
   onToggle,
   onInfoClick,
+  currentBid,
+  bidCount,
+  timeRemaining,
+  watcherCount,
+  isEndingSoon,
 }: MonsterCardProps) {
   const getAttribute = (traitType: string) => {
     const attr = nft.attributes.find((a) => a.trait_type === traitType);
@@ -21,15 +32,8 @@ export default function MonsterCard({
   };
 
   const beastName = nft.beastName || "Unknown";
-  const beastType = nft.beastType || getAttribute("Type") || "Unknown";
   const tier = nft.tier || getAttribute("Tier") || "—";
-  const level = nft.level || getAttribute("Level") || "0";
   const power = nft.power || getAttribute("Power") || "0";
-  const prefix = getAttribute("Prefix");
-  const suffix = getAttribute("Suffix");
-
-  const epithet =
-    prefix && suffix ? `${prefix} ${suffix}` : prefix || suffix || "";
 
   const imageSrc = nft.metadata?.image
     ? nft.metadata.image
@@ -37,14 +41,16 @@ export default function MonsterCard({
       ? `${IMAGE_BASE_URL}/${nft.imagePath}`
       : "/logo.png";
 
-  const tokenIdDisplay = `#${parseInt(nft.tokenId, 16).toString()}`;
+  // Tier badge colors
+  const tierColors: Record<string, { bg: string; text: string; border: string }> = {
+    "1": { bg: "rgba(251, 191, 36, 0.15)", text: "#FCD34D", border: "rgba(251, 191, 36, 0.4)" }, // Gold - T1
+    "2": { bg: "rgba(168, 85, 247, 0.15)", text: "#C084FC", border: "rgba(168, 85, 247, 0.4)" }, // Purple - T2
+    "3": { bg: "rgba(59, 130, 246, 0.15)", text: "#60A5FA", border: "rgba(59, 130, 246, 0.4)" }, // Blue - T3
+    "4": { bg: "rgba(34, 197, 94, 0.15)", text: "#4ADE80", border: "rgba(34, 197, 94, 0.4)" },   // Green - T4
+    "5": { bg: "rgba(156, 163, 175, 0.15)", text: "#9CA3AF", border: "rgba(156, 163, 175, 0.4)" }, // Gray - T5
+  };
 
-  const stats = [
-    { label: "Type", value: beastType },
-    { label: "Tier", value: tier },
-    { label: "Level", value: level },
-    { label: "Power", value: parseFloat(power).toFixed(0) },
-  ];
+  const tierStyle = tierColors[tier] || tierColors["5"];
 
   return (
     <article
@@ -58,114 +64,190 @@ export default function MonsterCard({
           onToggle();
         }
       }}
-      className={`group relative flex h-full w-full flex-col gap-2 md:gap-4 overflow-hidden rounded-xl md:rounded-2xl border bg-black/70 backdrop-blur-sm p-3 md:p-4 transition-all duration-200 hover:-translate-y-0.5 hover:cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(50,255,52)]/70 ${
+      className={`group relative flex flex-col overflow-hidden rounded-xl transition-all duration-200 cursor-pointer animate-card-lift focus:outline-none ${
         selected
-          ? "border-[rgb(50,255,52)] shadow-[0_0_20px_rgba(50,255,52,0.3)]"
-          : "border-[rgb(50,255,52)]/15 hover:border-[rgb(50,255,52)]/40 hover:bg-black/80"
+          ? "ring-2 ring-[var(--color-gold)] shadow-[0_0_20px_rgba(212,175,55,0.3)]"
+          : ""
       }`}
+      style={{
+        backgroundColor: 'var(--color-surface)',
+        border: `1px solid ${selected ? 'var(--color-gold)' : 'var(--color-border)'}`,
+      }}
     >
-      {/* Selected state: always visible checkmark */}
-      {selected && (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="absolute top-2 right-2 md:top-3 md:right-3 z-20 w-5 h-5 md:w-7 md:h-7 text-[rgb(50,255,52)]"
-        >
-          <path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z" />
-          <path d="m9 12 2 2 4-4" />
-        </svg>
-      )}
-      {/* Unselected state: faded empty checkbox on hover */}
-      {!selected && (
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="absolute top-2 right-2 md:top-3 md:right-3 z-20 w-5 h-5 md:w-7 md:h-7 text-white/30 opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          <rect x="3" y="3" width="18" height="18" rx="4" />
-        </svg>
-      )}
+      {/* Image Container - 4:5 aspect ratio */}
+      <div className="relative aspect-[4/5] w-full overflow-hidden">
+        <Image
+          src={imageSrc}
+          alt={nft.metadataName}
+          fill
+          draggable={false}
+          className="object-cover transition-transform duration-300 group-hover:scale-105"
+          unoptimized
+        />
 
-      <header className="flex items-center justify-between text-[9px] md:text-[10px] uppercase tracking-wider text-[rgb(186,255,188)]/60">
-        <span>{tokenIdDisplay}</span>
-        {epithet && (
-          <span className="truncate max-w-[50%] text-right">
-            {epithet}
-          </span>
-        )}
-      </header>
-
-      <div className="flex flex-row md:flex-col items-center gap-3 text-white">
-        <div className="relative flex h-20 w-20 md:h-28 md:w-28 flex-shrink-0 items-center justify-center">
-          <Image
-            src={imageSrc}
-            alt={nft.metadataName}
-            width={112}
-            height={112}
-            draggable={false}
-            className="h-full w-full object-contain"
-            unoptimized
-          />
-          {onInfoClick && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onInfoClick();
-              }}
-              className="absolute bottom-0 right-0 z-20 w-5 h-5 md:w-6 md:h-6 rounded-full bg-black/70 border border-white/30 flex items-center justify-center text-white/80 hover:text-white hover:bg-black/90 hover:border-white/50 transition-all"
-              title="View details"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                className="w-3 h-3 md:w-3.5 md:h-3.5"
+        {/* Hover Overlay - Shows on hover */}
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/40 transition-all duration-200">
+          {/* Top info - Time & Watchers (shown on hover) */}
+          <div className="absolute top-0 left-0 right-0 p-3 flex justify-between items-start opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+            {timeRemaining && (
+              <span
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-medium ${
+                  isEndingSoon ? 'animate-urgency-pulse' : ''
+                }`}
+                style={{
+                  backgroundColor: isEndingSoon ? 'rgba(245, 158, 11, 0.9)' : 'rgba(0,0,0,0.7)',
+                  color: isEndingSoon ? '#000' : 'var(--color-text)',
+                }}
               >
-                <circle cx="12" cy="12" r="10" />
-                <path d="M12 16v-4" />
-                <path d="M12 8h.01" />
-              </svg>
-            </button>
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 6v6l4 2" />
+                </svg>
+                {timeRemaining}
+              </span>
+            )}
+            {watcherCount !== undefined && (
+              <span
+                className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs"
+                style={{ backgroundColor: 'rgba(0,0,0,0.7)', color: 'var(--color-text-muted)' }}
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+                {watcherCount}
+              </span>
+            )}
+          </div>
+
+          {/* Quick Bid Button (shown on hover) */}
+          {currentBid && (
+            <div className="absolute bottom-16 left-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity duration-200">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onInfoClick?.();
+                }}
+                className="w-full py-2.5 rounded-lg text-sm font-semibold btn-gold"
+              >
+                Quick Bid
+              </button>
+            </div>
           )}
         </div>
-        <div className="flex flex-col gap-0.5 md:gap-1 text-left md:text-center flex-1 min-w-0">
-          <h3 className="text-sm md:text-base font-orbitron uppercase tracking-wide leading-tight">
-            {nft.metadataName}
-          </h3>
-          <p className="text-[10px] md:text-[11px] text-[rgb(186,255,188)]/50">{beastName}</p>
+
+        {/* Selection Checkbox */}
+        <div className="absolute top-2 right-2 z-20">
+          {selected ? (
+            <div
+              className="w-6 h-6 rounded-full flex items-center justify-center"
+              style={{ backgroundColor: 'var(--color-gold)' }}
+            >
+              <svg className="w-4 h-4" style={{ color: 'var(--color-bg)' }} fill="none" stroke="currentColor" strokeWidth="3" viewBox="0 0 24 24">
+                <path d="M5 13l4 4L19 7" />
+              </svg>
+            </div>
+          ) : (
+            <div
+              className="w-6 h-6 rounded-full border-2 opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ borderColor: 'var(--color-champagne)', backgroundColor: 'rgba(0,0,0,0.5)' }}
+            />
+          )}
+        </div>
+
+        {/* Tier Badge (shown on hover or always if T1/T2) */}
+        <div className={`absolute top-2 left-2 ${tier === "1" || tier === "2" ? "opacity-100" : "opacity-0 group-hover:opacity-100"} transition-opacity`}>
+          <span
+            className="px-2 py-1 rounded text-xs font-bold"
+            style={{
+              backgroundColor: tierStyle.bg,
+              color: tierStyle.text,
+              border: `1px solid ${tierStyle.border}`,
+            }}
+          >
+            T{tier}
+          </span>
+        </div>
+
+        {/* Gradient Overlay at Bottom */}
+        <div className="absolute bottom-0 left-0 right-0 h-24 card-gradient" />
+      </div>
+
+      {/* Card Content */}
+      <div className="p-3 md:p-4">
+        {/* Title */}
+        <h3
+          className="font-display text-base md:text-lg leading-tight truncate"
+          style={{ color: 'var(--color-text)' }}
+        >
+          {nft.metadataName}
+        </h3>
+
+        {/* Beast Name */}
+        <p
+          className="text-xs mt-0.5 truncate"
+          style={{ color: 'var(--color-text-muted)' }}
+        >
+          {beastName}
+        </p>
+
+        {/* Price & Bids Row */}
+        <div className="flex items-center justify-between mt-3">
+          {currentBid ? (
+            <>
+              <span
+                className="font-mono text-sm font-semibold"
+                style={{ color: 'var(--color-champagne)' }}
+              >
+                {currentBid}
+              </span>
+              {bidCount !== undefined && (
+                <span
+                  className="text-xs"
+                  style={{ color: 'var(--color-text-muted)' }}
+                >
+                  {bidCount} bid{bidCount !== 1 ? 's' : ''}
+                </span>
+              )}
+            </>
+          ) : (
+            <>
+              <span
+                className="text-xs"
+                style={{ color: 'var(--color-text-muted)' }}
+              >
+                Power: {parseFloat(power).toFixed(0)}
+              </span>
+              {onInfoClick && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onInfoClick();
+                  }}
+                  className="text-xs flex items-center gap-1 transition-colors"
+                  style={{ color: 'var(--color-gold)' }}
+                >
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" strokeWidth="2" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" />
+                    <path d="M12 16v-4" />
+                    <path d="M12 8h.01" />
+                  </svg>
+                  Details
+                </button>
+              )}
+            </>
+          )}
         </div>
       </div>
 
-      <div className="grid grid-cols-4 md:grid-cols-2 gap-1 md:gap-2 text-white mt-auto">
-        {stats.map((stat) => (
-          <div
-            key={stat.label}
-            className="flex flex-col md:flex-row items-center md:justify-between rounded-md md:rounded-lg bg-white/5 px-1.5 md:px-3 py-1.5 md:py-2"
-          >
-            <span className="text-[rgb(186,255,188)]/50 text-[7px] md:text-[10px] uppercase">
-              {stat.label}
-            </span>
-            <span className="text-[11px] md:text-sm font-medium text-white">
-              {stat.value}
-            </span>
-          </div>
-        ))}
-      </div>
+      {/* Ending Soon Border Animation */}
+      {isEndingSoon && (
+        <div
+          className="absolute inset-0 rounded-xl pointer-events-none animate-gold-glow"
+          style={{ border: '2px solid var(--color-urgency)' }}
+        />
+      )}
     </article>
   );
 }

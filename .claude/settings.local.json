@@ -19,7 +19,15 @@
       "Bash(agent-browser:*)",
       "Bash(npm run build:*)",
       "WebSearch",
-      "WebFetch(domain:docs.provable.games)"
+      "WebFetch(domain:docs.provable.games)",
+      "Bash(QUERY=\"SELECT token_id, contract_address FROM token_balances WHERE LOWER\\(account_address\\) = ''''0x01c9f001de664f0cd5b9e22fbb013865c2ca68c75c3ecc6d627b30ac6e2f8cd2'''' AND contract_address = ''''0x036017e69d21d6d8c13e266eabb73ef1f1d02722d86bdcabe5f168f8e549d3cd'''' AND balance != ''''0x0000000000000000000000000000000000000000000000000000000000000000'''' LIMIT 5\" __NEW_LINE_4c607b9b0af354ab__ curl -s \"https://api.cartridge.gg/x/pg-mainnet-10/torii/sql\" --get --data-urlencode \"query=$QUERY\" -H \"Content-Type: application/json\")",
+      "Bash(grep:*)",
+      "Bash(tree:*)",
+      "Bash(find:*)",
+      "Bash(wc:*)",
+      "Bash(npm run lint)",
+      "Bash(git add:*)",
+      "Bash(git commit -m \"$\\(cat <<''EOF''\nAdd featured Hot Deal to hero section and remove unnecessary borders\n\n- Replace large logo with featured Hot Deal auction in hero\n- Show highest-value auction with no bids \\(power/XP based\\)\n- Display auction details: image, name, stats badges, price, countdown\n- Click featured auction to scroll to bids section\n- Fall back to logo when no hot deals available\n- Remove green border from Adventurer card image \\(match Beast card style\\)\n\nCo-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>\nEOF\n\\)\")"
     ]
   }
 }

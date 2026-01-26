@@ -1,6 +1,5 @@
 "use client";
-import { Orbitron } from "next/font/google";
-import { GeistMono } from "geist/font/mono";
+import { Playfair_Display, Inter, JetBrains_Mono } from "next/font/google";
 import { Suspense } from "react";
 import "./globals.css";
 import { Header } from "./components/layout";
@@ -12,9 +11,22 @@ import { EVMProvider } from "./providers/evm-provider";
 import { ToastProvider } from "./providers/toast-provider";
 import { ErrorBoundary } from "./components/ui";
 
-const orbitron = Orbitron({
-  variable: "--font-orbitron",
+const playfair = Playfair_Display({
+  variable: "--font-playfair",
   subsets: ["latin"],
+  display: "swap",
+});
+
+const inter = Inter({
+  variable: "--font-inter",
+  subsets: ["latin"],
+  display: "swap",
+});
+
+const jetbrains = JetBrains_Mono({
+  variable: "--font-jetbrains",
+  subsets: ["latin"],
+  display: "swap",
 });
 
 export default function RootLayout({
@@ -47,7 +59,8 @@ export default function RootLayout({
         <meta name="twitter:image" content="/og-default.png" />
       </head>
       <body
-        className={`${orbitron.variable} ${GeistMono.variable} antialiased bg-black`}
+        className={`${playfair.variable} ${inter.variable} ${jetbrains.variable} antialiased`}
+        style={{ backgroundColor: 'var(--color-bg)' }}
       >
         <EVMProvider>
           <ApolloGraphQLProvider>
