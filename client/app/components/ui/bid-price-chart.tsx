@@ -175,7 +175,7 @@ export default function BidPriceChart({
                 width={width}
                 height={height}
                 viewBox={`0 0 ${width} ${height}`}
-                className="overflow-visible"
+                className="overflow-hidden"
             >
                 <defs>
                     <linearGradient id="chartGradient" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -274,21 +274,28 @@ export default function BidPriceChart({
                 
                 {(() => {
                     const labelText = formatUSDSmart(latestValue);
-                    const labelWidth = labelText.length * 5.5;
-                    const horizontalPadding = 12;
-                    const verticalPadding = 6;
-                    const labelX = Math.min(latestX - labelWidth / 2, width - labelWidth / 2 - horizontalPadding);
-                    const labelY = latestY < chartHeight / 2 ? latestY - 12 : latestY + 20;
-                    
+                    // Use smaller text for small charts
+                    const fontSize = width > 300 ? 10 : 8;
+                    const charWidth = width > 300 ? 6 : 5;
+                    const labelWidth = Math.max(labelText.length * charWidth, 35);
+                    const horizontalPadding = width > 300 ? 8 : 6;
+                    const verticalPadding = width > 300 ? 6 : 4;
+
+                    // For small charts, position label at the end but ensure it fits within container
+                    const totalLabelWidth = labelWidth + (horizontalPadding * 2);
+                    const maxLabelX = width - totalLabelWidth / 2 - 2;
+                    const labelX = Math.min(latestX, maxLabelX);
+                    const labelY = latestY < chartHeight / 2 ? latestY - 10 : latestY + 18;
+
                     return (
                         <g>
                             <rect
                                 x={labelX - labelWidth / 2 - horizontalPadding}
-                                y={labelY - 10 - verticalPadding / 2}
-                                width={labelWidth + (horizontalPadding * 2)}
-                                height={14 + verticalPadding}
-                                rx={5}
-                                fill="rgba(0,0,0,0.8)"
+                                y={labelY - 8 - verticalPadding / 2}
+                                width={totalLabelWidth}
+                                height={12 + verticalPadding}
+                                rx={4}
+                                fill="rgba(0,0,0,0.85)"
                                 stroke="rgb(50,255,52)"
                                 strokeWidth="0.5"
                                 strokeOpacity="0.6"
@@ -297,8 +304,8 @@ export default function BidPriceChart({
                                 x={labelX}
                                 y={labelY}
                                 textAnchor="middle"
-                                className="text-[10px] font-orbitron fill-[rgb(50,255,52)] font-semibold"
-                                style={{ fontFamily: 'var(--font-orbitron), sans-serif' }}
+                                className={`font-orbitron fill-[rgb(50,255,52)] font-semibold`}
+                                style={{ fontFamily: 'var(--font-orbitron), sans-serif', fontSize: `${fontSize}px` }}
                             >
                                 {labelText}
                             </text>
@@ -306,13 +313,14 @@ export default function BidPriceChart({
                     );
                 })()}
                 
-                {(() => {
-                    const statsOffset = width > 300 ? 12 : 24;
+                {/* Only show stats panel for larger charts */}
+                {width > 300 && (() => {
+                    const statsOffset = 12;
                     const statsX = padding.left + chartWidth + statsOffset;
-                    const statsStartY = padding.top + (width > 300 ? 4 : 2);
-                    const labelSpacing = width > 300 ? 14 : 12;
-                    const sectionSpacing = width > 300 ? 24 : 20;
-                    
+                    const statsStartY = padding.top + 4;
+                    const labelSpacing = 14;
+                    const sectionSpacing = 24;
+
                     return (
                         <g>
                             <text
@@ -334,7 +342,7 @@ export default function BidPriceChart({
                             >
                                 {isPositive ? '+' : ''}{changePercent.toFixed(1)}%
                             </text>
-                            
+
                             <text
                                 x={statsX}
                                 y={statsStartY + sectionSpacing + labelSpacing}
