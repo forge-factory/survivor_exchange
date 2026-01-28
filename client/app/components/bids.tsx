@@ -289,8 +289,8 @@ const toast = useToast();
     Record<string, { amount: string; usdValue: string | null }>
   >({});
 
-  // State for adventurer detail image URL (when NFTs aren't fetched)
-  const [adventurerDetailImage, setAdventurerDetailImage] = useState<string | null>(null);
+  // State for adventurer detail images (when NFTs aren't fetched from GraphQL)
+  const [adventurerDetailImages, setAdventurerDetailImages] = useState<Array<{ tokenId: string; imageUrl: string }>>([]);
   const [isAdventurerModalOpen, setIsAdventurerModalOpen] = useState(false);
   const [selectedAdventurerIndex, setSelectedAdventurerIndex] = useState(0);
 
@@ -318,38 +318,39 @@ const toast = useToast();
     }
   }, [selectedCollectionId]);
 
-// Compute adventurer image URL for detail panel when an adventurer auction is selected
+// Compute adventurer image URLs for detail panel when an adventurer auction is selected
   useEffect(() => {
     if (!selectedCollectionId) {
-      setAdventurerDetailImage(null);
+      setAdventurerDetailImages([]);
       return;
     }
 
     const auctionItems = getAuctionItems(selectedCollectionId);
-    const isAdventurerAuction = auctionItems.length > 0 && auctionItems.some(item => {
+    const adventurerItems = auctionItems.filter(item => {
       const contractAddr = normalizeContractAddress(item.contract_address || '').toLowerCase();
       const adventurerAddr = normalizeContractAddress(ADVENTURER_NFT_CONTRACT_ADDRESS).toLowerCase();
       return contractAddr === adventurerAddr;
     });
 
-    if (!isAdventurerAuction) {
-      setAdventurerDetailImage(null);
+    if (adventurerItems.length === 0) {
+      setAdventurerDetailImages([]);
       return;
     }
 
-    // Get first item's token ID and generate static URL
-    const firstItem = auctionItems[0];
-    if (!firstItem) return;
+    // Generate static image URLs for all adventurer items
+    const images = adventurerItems.map(item => {
+      const tokenIdStr = String(item.token_id);
+      const tokenIdNum = tokenIdStr.startsWith("0x")
+        ? parseInt(tokenIdStr, 16)
+        : parseInt(tokenIdStr, 10);
 
-    const tokenIdStr = String(firstItem.token_id);
-    const tokenIdNum = tokenIdStr.startsWith("0x")
-      ? parseInt(tokenIdStr, 16)
-      : parseInt(tokenIdStr, 10);
+      const paddedTokenId = "0x" + tokenIdNum.toString(16).padStart(64, '0');
+      const imageUrl = `https://api.cartridge.gg/x/arcade-main/torii/static/${ADVENTURER_NFT_CONTRACT_ADDRESS}/${paddedTokenId}/image`;
 
-    // Generate static image URL
-    const paddedTokenId = "0x" + tokenIdNum.toString(16).padStart(64, '0');
-    const imageUrl = `https://api.cartridge.gg/x/arcade-main/torii/static/${ADVENTURER_NFT_CONTRACT_ADDRESS}/${paddedTokenId}/image`;
-    setAdventurerDetailImage(imageUrl);
+      return { tokenId: tokenIdStr, imageUrl };
+    });
+
+    setAdventurerDetailImages(images);
   }, [selectedCollectionId, getAuctionItems]);
 
   // Track if we've auto-opened from URL to avoid re-triggering
@@ -489,7 +490,7 @@ const toast = useToast();
     }
   }, [token, auctions, loading]);
 
-  // Open modal once NFTs are available
+  // Open modal once NFTs are available (for beasts)
   useEffect(() => {
     if (shouldOpenModalOnNftsLoad.current && selectedAuctionNfts.length > 0) {
       shouldOpenModalOnNftsLoad.current = false;
@@ -497,6 +498,15 @@ const toast = useToast();
       setIsBeastModalOpen(true);
     }
   }, [selectedAuctionNfts]);
+
+  // Open adventurer modal when adventurer images are available (for adventurer auctions from URL)
+  useEffect(() => {
+    if (shouldOpenModalOnNftsLoad.current && adventurerDetailImages.length > 0 && selectedAuctionNfts.length === 0) {
+      shouldOpenModalOnNftsLoad.current = false;
+      setSelectedAdventurerIndex(0);
+      setIsAdventurerModalOpen(true);
+    }
+  }, [adventurerDetailImages, selectedAuctionNfts]);
 
   // Prepare beast metadata for skull rewards hook
   const selectedAuctionBeastData = useMemo(() => {
@@ -1992,22 +2002,50 @@ const toast = useToast();
                   const nfts = auction?.nfts || [];
 
                   if (nfts.length === 0) {
-                    // Check if this is an adventurer auction with fetched image
-                    if (adventurerDetailImage) {
+                    // Check if this is an adventurer auction with fetched images
+                    if (adventurerDetailImages.length > 0) {
                       return (
-                        <div
-                          onClick={() => {
-                            setSelectedAdventurerIndex(0);
-                            setIsAdventurerModalOpen(true);
-                          }}
-                          className="flex h-28 w-28 items-center justify-center rounded-2xl overflow-hidden cursor-pointer transition-all hover:scale-105 hover:ring-2 hover:ring-[rgb(50,255,52)]/60"
-                        >
-                          <img
-                            src={adventurerDetailImage}
-                            alt={selectedCollection.name}
-                            draggable={false}
-                            className="h-full w-full object-contain"
-                          />
+                        <div className="w-full relative">
+                          {/* Horizontal scroll for adventurer images */}
+                          <div className="flex gap-2 sm:gap-3 overflow-x-auto pb-2 scrollbar-none [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+                            {adventurerDetailImages.map((item, index) => (
+                              <div
+                                key={item.tokenId}
+                                onClick={() => {
+                                  setSelectedAdventurerIndex(index);
+                                  setIsAdventurerModalOpen(true);
+                                }}
+                                className="group/nft relative shrink-0 h-20 sm:h-28 w-auto overflow-hidden cursor-pointer transition-all hover:scale-105 hover:ring-2 hover:ring-[rgb(50,255,52)]/60"
+                              >
+                                <img
+                                  src={item.imageUrl}
+                                  alt={`Adventurer #${item.tokenId}`}
+                                  draggable={false}
+                                  className="h-full w-auto object-contain"
+                                />
+                                {/* Eye icon overlay on hover */}
+                                <div className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 group-hover/nft:opacity-100 transition-opacity">
+                                  <svg
+                                    width="20"
+                                    height="20"
+                                    viewBox="0 0 24 24"
+                                    fill="none"
+                                    stroke="rgb(50,255,52)"
+                                    strokeWidth="2"
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                  >
+                                    <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z" />
+                                    <circle cx="12" cy="12" r="3" />
+                                  </svg>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          {/* Helper text */}
+                          <p className="mt-2 text-[10px] font-orbitron uppercase tracking-[0.14em] text-[rgb(186,255,188)]/50">
+                            Click adventurer to view details
+                          </p>
                         </div>
                       );
                     }
@@ -2663,44 +2701,49 @@ const toast = useToast();
 
                 <div ref={bidActionsRef} className="flex flex-col gap-2 w-full max-w-full md:max-w-[550px]">
                   <div className="flex flex-row gap-2 md:gap-3 w-full">
-                    <button
-                      type="button"
-                      onClick={handlePlaceBid}
-                      disabled={
-                        !isBidValid || !account || isSubmitting || isUserSeller
-                      }
-                      className={`inline-flex items-center justify-center gap-1.5 rounded-full flex-1 px-3 md:px-4 h-9 text-[10px] md:text-xs font-orbitron uppercase tracking-[0.1em] md:tracking-[0.12em] transition whitespace-nowrap ${
-                        isBidValid && account && !isSubmitting && !isUserSeller
-                          ? "bg-[rgb(50,255,52)] text-black font-bold hover:cursor-pointer hover:bg-[rgb(40,220,42)] shadow-[0_0_12px_rgba(50,255,52,0.4)]"
-                          : "border border-white/12 text-[rgb(186,255,188)]/45"
-                      }`}
-                    >
-                      <span>{isSubmitting ? "..." : "Place Bid"}</span>
-                      {!isSubmitting && (
-                        <InfoTooltip content="Compete in the auction. Your bid must be higher than the current highest bid. Winner is determined when the auction ends." />
-                      )}
-                    </button>
-                    {!userOffer && (
-                      <button
-                        type="button"
-                        onClick={handleMakeOffer}
-                        disabled={
-                          !isBidValid ||
-                          !account ||
-                          isSubmittingOffer ||
-                          isUserSeller
-                        }
-                        className={`inline-flex items-center justify-center gap-1.5 rounded-full flex-1 px-3 md:px-4 h-9 text-[10px] md:text-xs font-orbitron uppercase tracking-[0.1em] md:tracking-[0.12em] transition whitespace-nowrap ${
-                          isBidValid && account && !isSubmittingOffer && !isUserSeller
-                            ? "border border-blue-500 bg-blue-500/10 text-blue-500 hover:cursor-pointer hover:bg-blue-500 hover:text-black"
-                            : "border border-white/12 text-[rgb(186,255,188)]/45"
-                        }`}
-                      >
-                        <span>{isSubmittingOffer ? "..." : "Make Offer"}</span>
-                        {!isSubmittingOffer && (
-                          <InfoTooltip content="Make a direct buyout offer to the seller. If accepted, the auction ends immediately and you get the NFTs. Your funds are held in escrow until accepted or auction ends." />
+                    {/* Only show Place Bid and Make Offer when auction is NOT expired */}
+                    {!isAuctionExpired(selectedCollection.endTime, selectedCollection.status) && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={handlePlaceBid}
+                          disabled={
+                            !isBidValid || !account || isSubmitting || isUserSeller
+                          }
+                          className={`inline-flex items-center justify-center gap-1.5 rounded-full flex-1 px-3 md:px-4 h-9 text-[10px] md:text-xs font-orbitron uppercase tracking-[0.1em] md:tracking-[0.12em] transition whitespace-nowrap ${
+                            isBidValid && account && !isSubmitting && !isUserSeller
+                              ? "bg-[rgb(50,255,52)] text-black font-bold hover:cursor-pointer hover:bg-[rgb(40,220,42)] shadow-[0_0_12px_rgba(50,255,52,0.4)]"
+                              : "border border-white/12 text-[rgb(186,255,188)]/45"
+                          }`}
+                        >
+                          <span>{isSubmitting ? "..." : "Place Bid"}</span>
+                          {!isSubmitting && (
+                            <InfoTooltip content="Compete in the auction. Your bid must be higher than the current highest bid. Winner is determined when the auction ends." />
+                          )}
+                        </button>
+                        {!userOffer && (
+                          <button
+                            type="button"
+                            onClick={handleMakeOffer}
+                            disabled={
+                              !isBidValid ||
+                              !account ||
+                              isSubmittingOffer ||
+                              isUserSeller
+                            }
+                            className={`inline-flex items-center justify-center gap-1.5 rounded-full flex-1 px-3 md:px-4 h-9 text-[10px] md:text-xs font-orbitron uppercase tracking-[0.1em] md:tracking-[0.12em] transition whitespace-nowrap ${
+                              isBidValid && account && !isSubmittingOffer && !isUserSeller
+                                ? "border border-blue-500 bg-blue-500/10 text-blue-500 hover:cursor-pointer hover:bg-blue-500 hover:text-black"
+                                : "border border-white/12 text-[rgb(186,255,188)]/45"
+                            }`}
+                          >
+                            <span>{isSubmittingOffer ? "..." : "Make Offer"}</span>
+                            {!isSubmittingOffer && (
+                              <InfoTooltip content="Make a direct buyout offer to the seller. If accepted, the auction ends immediately and you get the NFTs. Your funds are held in escrow until accepted or auction ends." />
+                            )}
+                          </button>
                         )}
-                      </button>
+                      </>
                     )}
                     <button
                       type="button"
@@ -3063,7 +3106,15 @@ const toast = useToast();
 
       <AdventurerDetailModal
         isOpen={isAdventurerModalOpen}
-        onClose={() => setIsAdventurerModalOpen(false)}
+        onClose={() => {
+          setIsAdventurerModalOpen(false);
+          // Remove auction param from URL if it was opened from URL
+          if (token && hasAutoOpenedFromUrl.current) {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("auction");
+            router.push(url.pathname + url.search, { scroll: false });
+          }
+        }}
         nfts={selectedAdventurerNfts}
         currentIndex={selectedAdventurerIndex}
         onNavigate={setSelectedAdventurerIndex}

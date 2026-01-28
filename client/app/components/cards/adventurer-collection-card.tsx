@@ -60,13 +60,28 @@ export default function AdventurerCollectionCard({
     nfts = [],
     items = []
 }: AdventurerCollectionCardProps) {
-    // Get first NFT or auction item for image
-    const firstNft = nfts[0];
-    const firstItemTokenId = items[0]?.token_id ? normalizeTokenId(items[0].token_id) : null;
-    const tokenId = firstNft?.tokenId || firstItemTokenId;
+    // Generate image URLs for all items
+    const adventurerImages = useMemo(() => {
+        // First try to use items (auction items from contract)
+        if (items.length > 0) {
+            return items.map(item => {
+                const tokenId = normalizeTokenId(item.token_id);
+                return tokenId ? getAdventurerImageUrl(tokenId) : null;
+            }).filter((url): url is string => url !== null);
+        }
+        // Fall back to nfts if available
+        if (nfts.length > 0) {
+            return nfts.map(nft => getAdventurerImageUrl(nft.tokenId));
+        }
+        return [];
+    }, [items, nfts]);
 
-    // Generate static image URL
-    const adventurerImage = tokenId ? getAdventurerImageUrl(tokenId) : null;
+    // Check if auction is expired (time ran out but status not updated on-chain)
+    const isExpired = useMemo(() => {
+        const secondsRemaining = getSecondsRemaining(collection.endTime);
+        const isActive = collection.status && parseInt(collection.status) === 2;
+        return isActive && secondsRemaining !== null && secondsRemaining <= 0;
+    }, [collection.endTime, collection.status]);
 
     // Calculate urgency level
     const urgencyInfo = useMemo(() => {
@@ -111,9 +126,12 @@ export default function AdventurerCollectionCard({
             label: "Highest Bid",
             value: hasBids
                 ? formatUSDSmart(collection.highestBid!)
-                : "Be first!",
-            suffix: !hasBids ? "Set the price" : undefined,
-            highlight: !hasBids,
+                : isExpired
+                    ? "No bids"
+                    : "Be first!",
+            suffix: !hasBids && !isExpired ? "Set the price" : undefined,
+            highlight: !hasBids && !isExpired,
+            muted: isExpired && !hasBids,
         },
     ];
 
@@ -152,8 +170,14 @@ export default function AdventurerCollectionCard({
                 </div>
             )}
 
+            {/* Expired Badge */}
+            {isExpired && (
+                <div className="absolute top-4 left-4 z-20 px-2.5 py-1 rounded-full text-[10px] font-orbitron uppercase tracking-wider font-bold text-white bg-red-600">
+                    Expired
+                </div>
+            )}
             {/* Urgency Badge */}
-            {urgencyInfo.badge && (
+            {!isExpired && urgencyInfo.badge && (
                 <div className={`absolute top-4 left-4 z-20 px-2.5 py-1 rounded-full text-[10px] font-orbitron uppercase tracking-wider font-bold text-black ${urgencyInfo.badge.color} ${urgencyInfo.badge.animate ? 'animate-urgency-pulse' : ''}`}>
                     <span className="flex items-center gap-1">
                         {urgencyInfo.badge.icon && <span className="animate-fire">{urgencyInfo.badge.icon}</span>}
@@ -169,29 +193,64 @@ export default function AdventurerCollectionCard({
             </header>
 
             <div className="flex flex-col items-center gap-4 text-center">
-                {/* Image */}
-                <div className="h-24 w-24 rounded-2xl overflow-hidden flex items-center justify-center">
-                    {adventurerImage ? (
-                        <img
-                            src={adventurerImage}
-                            alt={collection.name}
-                            draggable={false}
-                            className="h-full w-full object-contain"
-                        />
+                {/* Images Grid */}
+                <div className="h-24 w-24">
+                    {adventurerImages.length === 0 ? (
+                        <div className="flex h-full w-full items-center justify-center rounded-2xl">
+                            <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.5"
+                                className="w-12 h-12 text-[rgb(50,255,52)]/40"
+                            >
+                                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+                                <circle cx="9" cy="7" r="4" />
+                                <path d="m22 8-4 4" />
+                                <path d="m18 8 4 4" />
+                            </svg>
+                        </div>
+                    ) : adventurerImages.length === 1 ? (
+                        <div className="h-full w-full overflow-hidden rounded-2xl">
+                            <img
+                                src={adventurerImages[0]}
+                                alt={collection.name}
+                                draggable={false}
+                                className="h-full w-full object-contain"
+                            />
+                        </div>
+                    ) : adventurerImages.length === 2 ? (
+                        <div className="flex h-full w-full gap-1">
+                            {adventurerImages.slice(0, 2).map((imageUrl, idx) => (
+                                <div key={idx} className="h-full w-1/2 overflow-hidden">
+                                    <img
+                                        src={imageUrl}
+                                        alt={`${collection.name} ${idx + 1}`}
+                                        draggable={false}
+                                        className="h-full w-full object-contain"
+                                    />
+                                </div>
+                            ))}
+                        </div>
                     ) : (
-                        <svg
-                            xmlns="http://www.w3.org/2000/svg"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="1.5"
-                            className="w-12 h-12 text-[rgb(50,255,52)]/40"
-                        >
-                            <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
-                            <circle cx="9" cy="7" r="4" />
-                            <path d="m22 8-4 4" />
-                            <path d="m18 8 4 4" />
-                        </svg>
+                        <div className="grid h-full w-full grid-cols-2 gap-1">
+                            {adventurerImages.slice(0, 3).map((imageUrl, idx) => (
+                                <div key={idx} className="aspect-square overflow-hidden">
+                                    <img
+                                        src={imageUrl}
+                                        alt={`${collection.name} ${idx + 1}`}
+                                        draggable={false}
+                                        className="h-full w-full object-contain"
+                                    />
+                                </div>
+                            ))}
+                            {adventurerImages.length > 3 ? (
+                                <div className="aspect-square flex items-center justify-center border border-[rgb(50,255,52)]/40 bg-[rgb(50,255,52)]/12 text-[10px] font-orbitron uppercase tracking-widest text-[rgb(50,255,52)]">
+                                    +{adventurerImages.length - 3} more
+                                </div>
+                            ) : null}
+                        </div>
                     )}
                 </div>
 
@@ -229,7 +288,7 @@ export default function AdventurerCollectionCard({
                             {stat.label}
                         </p>
                         <p className={`text-2xl font-orbitron tracking-tight ${
-                            stat.highlight ? 'text-orange-400' : 'text-white'
+                            stat.highlight ? 'text-orange-400' : stat.muted ? 'text-white/50' : 'text-white'
                         }`}>{stat.value}</p>
                         {stat.suffix ? (
                             <span className={`text-xs font-orbitron uppercase tracking-[0.18em] ${
@@ -252,8 +311,8 @@ export default function AdventurerCollectionCard({
                     />
                 </div>
 
-                {/* Quick Bid Button */}
-                {onQuickBid && collection.status && parseInt(collection.status) === 2 && (
+                {/* Quick Bid Button - only show for active auctions that haven't expired */}
+                {onQuickBid && collection.status && parseInt(collection.status) === 2 && !isExpired && (
                     <button
                         type="button"
                         onClick={(e) => {

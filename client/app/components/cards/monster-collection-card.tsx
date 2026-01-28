@@ -39,6 +39,13 @@ const getSecondsRemaining = (endTime?: string): number | null => {
 };
 
 export default function MonsterCollectionCard({ collection, isSelected, onSelect, onQuickBid, nfts = [] }: MonsterCollectionCardProps) {
+    // Check if auction is expired (time ran out but status not updated on-chain)
+    const isExpired = useMemo(() => {
+        const secondsRemaining = getSecondsRemaining(collection.endTime);
+        const isActive = collection.status && parseInt(collection.status) === 2;
+        return isActive && secondsRemaining !== null && secondsRemaining <= 0;
+    }, [collection.endTime, collection.status]);
+
     // Calculate urgency level
     const urgencyInfo = useMemo(() => {
         const secondsRemaining = getSecondsRemaining(collection.endTime);
@@ -82,9 +89,12 @@ export default function MonsterCollectionCard({ collection, isSelected, onSelect
             label: "Highest Bid",
             value: hasBids
                 ? formatUSDSmart(collection.highestBid!)
-                : "Be first!",
-            suffix: !hasBids ? "Set the price" : undefined,
-            highlight: !hasBids,
+                : isExpired
+                    ? "No bids"
+                    : "Be first!",
+            suffix: !hasBids && !isExpired ? "Set the price" : undefined,
+            highlight: !hasBids && !isExpired,
+            muted: isExpired && !hasBids,
         },
     ];
 
@@ -125,8 +135,14 @@ export default function MonsterCollectionCard({ collection, isSelected, onSelect
                     </svg>
                 </div>
             )}
+            {/* Expired Badge */}
+            {isExpired && (
+                <div className="absolute top-4 left-4 z-20 px-2.5 py-1 rounded-full text-[10px] font-orbitron uppercase tracking-wider font-bold text-white bg-red-600">
+                    Expired
+                </div>
+            )}
             {/* Urgency Badge */}
-            {urgencyInfo.badge && (
+            {!isExpired && urgencyInfo.badge && (
                 <div className={`absolute top-4 left-4 z-20 px-2.5 py-1 rounded-full text-[10px] font-orbitron uppercase tracking-wider font-bold text-black ${urgencyInfo.badge.color} ${urgencyInfo.badge.animate ? 'animate-urgency-pulse' : ''}`}>
                     <span className="flex items-center gap-1">
                         {urgencyInfo.badge.icon && <span className="animate-fire">{urgencyInfo.badge.icon}</span>}
@@ -328,7 +344,7 @@ export default function MonsterCollectionCard({ collection, isSelected, onSelect
                             {stat.label}
                         </p>
                         <p className={`text-2xl font-orbitron tracking-tight ${
-                            stat.highlight ? 'text-orange-400' : 'text-white'
+                            stat.highlight ? 'text-orange-400' : stat.muted ? 'text-white/50' : 'text-white'
                         }`}>{stat.value}</p>
                         {stat.suffix ? (
                             <span className={`text-xs font-orbitron uppercase tracking-[0.18em] ${
@@ -350,8 +366,8 @@ export default function MonsterCollectionCard({ collection, isSelected, onSelect
                         currentBid={collection.highestBid}
                     />
                 </div>
-                {/* Quick Bid Button - only show for active auctions */}
-                {onQuickBid && collection.status && parseInt(collection.status) === 2 && (
+                {/* Quick Bid Button - only show for active auctions that haven't expired */}
+                {onQuickBid && collection.status && parseInt(collection.status) === 2 && !isExpired && (
                     <button
                         type="button"
                         onClick={(e) => {
