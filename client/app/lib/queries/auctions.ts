@@ -5,7 +5,7 @@ import { GRAPHQL_QUERY_LIMIT } from "../constants";
 // Reduced limits from 1000000 - prevents massive payloads
 export const AUCTIONS_QUERY = gql`
   query MyQuery {
-    bm020AuctionItemModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
+    bm021AuctionItemModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
       edges {
         node {
           auction_id
@@ -18,7 +18,7 @@ export const AUCTIONS_QUERY = gql`
         }
       }
     }
-    bm020AuctionModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
+    bm021AuctionModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
       edges {
         node {
           auction_id
@@ -34,7 +34,7 @@ export const AUCTIONS_QUERY = gql`
         }
       }
     }
-    bm020BidModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
+    bm021BidModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
       edges {
         node {
           auction_id
@@ -43,7 +43,7 @@ export const AUCTIONS_QUERY = gql`
         }
       }
     }
-    bm020OfferModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
+    bm021OfferModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
       edges {
         node {
           auction_id
@@ -64,7 +64,7 @@ export async function fetchAuctions(): Promise<AuctionsResponse> {
 
 export const MY_LISTINGS_QUERY = gql`
   query MyListings($seller: String!) {
-    bm020AuctionModels(
+    bm021AuctionModels(
       where: { seller: $seller }
       order: { direction: DESC, field: AUCTION_ID }
     ) {
@@ -83,7 +83,7 @@ export const MY_LISTINGS_QUERY = gql`
         }
       }
     }
-    bm020OfferModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
+    bm021OfferModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
       edges {
         node {
           auction_id
@@ -104,8 +104,6 @@ export async function fetchMyListings(
   throw new Error("Use Apollo Client hooks instead. See useMyListings hook.");
 }
 
-// Optimized consolidated query - reduced limits to 500 (from 1M) and removed 'metadataDescription'.
-// The 'metadata' field is included for NFT image display.
 export const CONSOLIDATED_QUERY = gql`
   query ConsolidatedQuery($accountAddress: String, $seller: String, $skipNFTs: Boolean = false, $skipListings: Boolean = false) {
     myNFTs: tokenBalances(limit: ${GRAPHQL_QUERY_LIMIT}, accountAddress: $accountAddress) @skip(if: $skipNFTs) {
@@ -126,7 +124,7 @@ export const CONSOLIDATED_QUERY = gql`
         }
       }
     }
-    auctionItems: bm020AuctionItemModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
+    auctionItems: bm021AuctionItemModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
       edges {
         node {
           auction_id
@@ -139,7 +137,7 @@ export const CONSOLIDATED_QUERY = gql`
         }
       }
     }
-    auctions: bm020AuctionModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
+    auctions: bm021AuctionModels(limit: ${GRAPHQL_QUERY_LIMIT}, order: {direction: DESC, field: AUCTION_ID}) {
       edges {
         node {
           auction_id
@@ -155,7 +153,7 @@ export const CONSOLIDATED_QUERY = gql`
         }
       }
     }
-    myListings: bm020AuctionModels(where: {seller: $seller}, order: {direction: DESC, field: AUCTION_ID}) @skip(if: $skipListings) {
+    myListings: bm021AuctionModels(where: {seller: $seller}, order: {direction: DESC, field: AUCTION_ID}) @skip(if: $skipListings) {
       edges {
         node {
           auction_id

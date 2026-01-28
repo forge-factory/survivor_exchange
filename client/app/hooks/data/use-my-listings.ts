@@ -2,7 +2,13 @@ import { useQuery } from "@apollo/client/react";
 import { useMemo } from "react";
 import { MY_LISTINGS_QUERY } from "../../lib/queries";
 import type { MyListingsResponse, Auction, Offer } from "../../lib/types";
-import { byteArrayToString, parseStatus, parseAmount, parseHexOrDecimal, safeParseInt } from "../../lib/utils";
+import {
+  byteArrayToString,
+  parseStatus,
+  parseAmount,
+  parseHexOrDecimal,
+  safeParseInt,
+} from "../../lib/utils";
 import { normalizeContractAddress } from "../../lib/utils/normalization";
 import { DEFAULT_POLL_INTERVAL } from "../../lib/constants";
 
@@ -54,9 +60,9 @@ export function useMyListings({ seller }: UseMyListingsOptions) {
   // Process offers into a map by auction_id
   const offersByAuction = useMemo(() => {
     const map = new Map<string, FormattedOffer[]>();
-    if (!data?.bm020OfferModels?.edges) return map;
+    if (!data?.bm021OfferModels?.edges) return map;
 
-    for (const edge of data.bm020OfferModels.edges) {
+    for (const edge of data.bm021OfferModels.edges) {
       const offer = edge.node;
       const statusNum = parseStatus(offer.status);
 
@@ -83,9 +89,9 @@ export function useMyListings({ seller }: UseMyListingsOptions) {
   }, [data]);
 
   const listings: FormattedListing[] = useMemo(() => {
-    if (!data?.bm020AuctionModels?.edges) return [];
+    if (!data?.bm021AuctionModels?.edges) return [];
 
-    const auctions: Auction[] = data.bm020AuctionModels.edges.map(
+    const auctions: Auction[] = data.bm021AuctionModels.edges.map(
       (edge: { node: Auction }) => edge.node,
     );
 

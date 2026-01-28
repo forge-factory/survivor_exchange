@@ -5,7 +5,7 @@ import { MY_NFTS_QUERY } from '../../lib/queries';
 import type { MyNFTsResponse, ERC721Token, FormattedNFT } from '../../lib/types';
 import { formatNFTs } from '../../lib/utils';
 import { normalizeContractAddress } from '../../lib/utils/normalization';
-import { DEFAULT_POLL_INTERVAL, BEASTS_NFT_CONTRACT_ADDRESS } from '../../lib/constants';
+import { BEASTS_NFT_CONTRACT_ADDRESS } from '../../lib/constants';
 
 interface UseMyNFTsOptions {
   address?: string;
@@ -24,8 +24,9 @@ export function useMyNFTs(options?: UseMyNFTsOptions) {
   const { data, loading, error } = useQuery<MyNFTsResponse>(MY_NFTS_QUERY, {
     variables: { accountAddress: targetAddress },
     skip: !targetAddress,
-    pollInterval: DEFAULT_POLL_INTERVAL,
-    fetchPolicy: 'cache-and-network',
+    // No polling - user NFTs don't change frequently, and each response is ~16MB
+    // Users can refresh the page to see new NFTs
+    fetchPolicy: 'cache-first',
     errorPolicy: 'all',
     notifyOnNetworkStatusChange: false,
   });

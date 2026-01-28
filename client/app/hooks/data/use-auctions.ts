@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo, useRef } from "react";
+import { useEffect, useState, useMemo, useRef, useCallback } from "react";
 import { useQuery, useApolloClient } from "@apollo/client/react";
 import { AUCTIONS_QUERY, MY_NFTS_QUERY } from "../../lib/queries";
 import type {
@@ -29,6 +29,9 @@ export interface AuctionWithNFTs extends Auction {
   executedAt?: string;
 }
 
+// Module-level cache so seller NFTs persist across hook re-instantiations
+const sellerNFTCache = new Map<string, FormattedNFT[]>();
+
 export function useAuctions() {
   const [currentPage, setCurrentPage] = useState(1);
   const [auctionsWithNFTs, setAuctionsWithNFTs] = useState<AuctionWithNFTs[]>(
@@ -36,6 +39,7 @@ export function useAuctions() {
   );
   const [isProcessingNFTs, setIsProcessingNFTs] = useState(false);
   const hasInitialData = useRef(false);
+  const isFetchingNFTs = useRef(false);
   const apolloClient = useApolloClient();
 
   const { data, loading, error } = useQuery<AuctionsResponse>(AUCTIONS_QUERY, {
@@ -47,7 +51,7 @@ export function useAuctions() {
 
   const allAuctions: Auction[] = useMemo(() => {
     const auctions =
-      data?.bm020AuctionModels?.edges?.map((edge) => {
+      data?.bm021AuctionModels?.edges?.map((edge) => {
         const auction = edge.node;
         // Normalize addresses from GraphQL response
         return {
@@ -76,12 +80,12 @@ export function useAuctions() {
   }, [data]);
 
   const allAuctionItems: AuctionItem[] = useMemo(() => {
-    return data?.bm020AuctionItemModels?.edges?.map((edge) => edge.node) || [];
+    return data?.bm021AuctionItemModels?.edges?.map((edge) => edge.node) || [];
   }, [data]);
 
   const allBids: Bid[] = useMemo(() => {
     return (
-      data?.bm020BidModels?.edges?.map((edge) => {
+      data?.bm021BidModels?.edges?.map((edge) => {
         const bid = edge.node;
         return {
           ...bid,
@@ -95,7 +99,7 @@ export function useAuctions() {
 
   const allOffers: Offer[] = useMemo(() => {
     return (
-      data?.bm020OfferModels?.edges?.map((edge) => {
+      data?.bm021OfferModels?.edges?.map((edge) => {
         const offer = edge.node;
         return {
           ...offer,
@@ -160,8 +164,49 @@ export function useAuctions() {
     };
   }, [itemsByAuction]);
 
+  // Fetch NFTs for a single seller - uses module-level cache, only fetches once per seller
+  const fetchSellerNFTs = useCallback(
+    async (
+      seller: string,
+      targetContractNormalized: string,
+    ): Promise<FormattedNFT[]> => {
+      const cached = sellerNFTCache.get(seller);
+      if (cached) return cached;
+
+      const { data: response } = await apolloClient.query<MyNFTsResponse>({
+        query: MY_NFTS_QUERY,
+        variables: { accountAddress: seller },
+        fetchPolicy: "cache-first",
+      });
+
+      const rawNFTs: ERC721Token[] = (
+        response?.tokenBalances?.edges || []
+      ).flatMap((edge) => {
+        const metadata = edge.node.tokenMetadata;
+        if (!metadata || !("tokenId" in metadata)) return [];
+        const normalized: ERC721Token = {
+          ...metadata,
+          contractAddress: metadata.contractAddress
+            ? normalizeContractAddress(metadata.contractAddress)
+            : metadata.contractAddress,
+        };
+        const nftContract = normalizeContractAddress(
+          normalized.contractAddress,
+        ).toLowerCase();
+        return nftContract === targetContractNormalized ? [normalized] : [];
+      });
+
+      const formattedNFTs = formatNFTs(rawNFTs);
+      sellerNFTCache.set(seller, formattedNFTs);
+      return formattedNFTs;
+    },
+    [apolloClient],
+  );
+
+  // Assemble auctions with NFTs, bids, and offers
+  // NFT fetching happens once per seller (cached), while bids/offers update on each poll
   useEffect(() => {
-    const fetchAllAuctionNFTs = async () => {
+    const assembleAuctions = async () => {
       if (!allAuctions.length) {
         setAuctionsWithNFTs([]);
         setIsProcessingNFTs(false);
@@ -169,11 +214,20 @@ export function useAuctions() {
         return;
       }
 
+      // Prevent concurrent fetches
+      if (isFetchingNFTs.current) return;
+      isFetchingNFTs.current = true;
+
       // Only show loading state on initial load, not on updates
       if (!hasInitialData.current) {
         setIsProcessingNFTs(true);
       }
 
+      const targetContractNormalized = normalizeContractAddress(
+        BEASTS_NFT_CONTRACT_ADDRESS,
+      ).toLowerCase();
+
+      // Group auctions by seller
       const auctionsBySeller = new Map<string, Auction[]>();
       for (const auction of allAuctions) {
         const items = itemsByAuction.get(String(auction.auction_id));
@@ -185,85 +239,45 @@ export function useAuctions() {
       }
 
       const auctionsWithNFTsData: AuctionWithNFTs[] = [];
-      const targetContractNormalized = normalizeContractAddress(
-        BEASTS_NFT_CONTRACT_ADDRESS,
-      ).toLowerCase();
 
       for (const [seller, sellerAuctions] of auctionsBySeller) {
+        let formattedNFTs: FormattedNFT[] = [];
+
         try {
-          // seller is already normalized from allAuctions useMemo
-          // Using 'cache-first' instead of 'network-only' to leverage Apollo cache
-          // This prevents re-fetching NFT data for sellers we've already queried
-          const { data: response } = await apolloClient.query<MyNFTsResponse>({
-            query: MY_NFTS_QUERY,
-            variables: { accountAddress: seller },
-            fetchPolicy: "cache-first",
-          });
-
-          const rawNFTs: ERC721Token[] = (
-            response?.tokenBalances?.edges || []
-          ).flatMap((edge) => {
-            const metadata = edge.node.tokenMetadata;
-            if (!metadata || !("tokenId" in metadata)) return [];
-            // Normalize contract addresses from GraphQL
-            const normalized: ERC721Token = {
-              ...metadata,
-              contractAddress: metadata.contractAddress
-                ? normalizeContractAddress(metadata.contractAddress)
-                : metadata.contractAddress,
-            };
-            const nftContract = normalizeContractAddress(
-              normalized.contractAddress,
-            ).toLowerCase();
-            return nftContract === targetContractNormalized ? [normalized] : [];
-          });
-
-          const formattedNFTs = formatNFTs(rawNFTs);
-
-          for (const auction of sellerAuctions) {
-            const auctionIdStr = String(auction.auction_id);
-            const items = itemsByAuction.get(auctionIdStr) || [];
-            const matchedNFTs = formattedNFTs.filter((nft) =>
-              items.some(
-                (item) => nft.tokenId === normalizeTokenId(item.token_id),
-              ),
-            );
-            const bids = bidsByAuction.get(auctionIdStr) || [];
-            const offers = offersByAuction.get(auctionIdStr) || [];
-            const executedAt =
-              items.length > 0 && items[0].entity?.executedAt
-                ? items[0].entity.executedAt
-                : undefined;
-
-            auctionsWithNFTsData.push({
-              ...auction,
-              nfts: matchedNFTs,
-              bids,
-              offers,
-              executedAt,
-            });
-          }
+          formattedNFTs = await fetchSellerNFTs(
+            seller,
+            targetContractNormalized,
+          );
         } catch {
-          for (const auction of sellerAuctions) {
-            const auctionIdStr = String(auction.auction_id);
-            const items = itemsByAuction.get(auctionIdStr) || [];
-            const bids = bidsByAuction.get(auctionIdStr) || [];
-            const offers = offersByAuction.get(auctionIdStr) || [];
-            const executedAt =
-              items.length > 0 && items[0].entity?.executedAt
-                ? items[0].entity.executedAt
-                : undefined;
-            auctionsWithNFTsData.push({
-              ...auction,
-              nfts: [],
-              bids,
-              offers,
-              executedAt,
-            });
-          }
+          // On error, use empty NFTs array - don't block auction display
+        }
+
+        for (const auction of sellerAuctions) {
+          const auctionIdStr = String(auction.auction_id);
+          const items = itemsByAuction.get(auctionIdStr) || [];
+          const matchedNFTs = formattedNFTs.filter((nft) =>
+            items.some(
+              (item) => nft.tokenId === normalizeTokenId(item.token_id),
+            ),
+          );
+          const bids = bidsByAuction.get(auctionIdStr) || [];
+          const offers = offersByAuction.get(auctionIdStr) || [];
+          const executedAt =
+            items.length > 0 && items[0].entity?.executedAt
+              ? items[0].entity.executedAt
+              : undefined;
+
+          auctionsWithNFTsData.push({
+            ...auction,
+            nfts: matchedNFTs,
+            bids,
+            offers,
+            executedAt,
+          });
         }
       }
 
+      // Also add auctions without items
       for (const auction of allAuctions) {
         const auctionIdStr = String(auction.auction_id);
         if (!itemsByAuction.has(auctionIdStr)) {
@@ -282,15 +296,16 @@ export function useAuctions() {
       setAuctionsWithNFTs(auctionsWithNFTsData);
       setIsProcessingNFTs(false);
       hasInitialData.current = true;
+      isFetchingNFTs.current = false;
     };
 
-    fetchAllAuctionNFTs();
+    assembleAuctions();
   }, [
     allAuctions,
     itemsByAuction,
     bidsByAuction,
     offersByAuction,
-    apolloClient,
+    fetchSellerNFTs,
   ]);
 
   // Only show loading on initial load, not when updating existing data

@@ -53,17 +53,17 @@ const client = new ApolloClient({
               return incoming;
             },
           },
-          bm020AuctionModels: {
+          bm021AuctionModels: {
             merge(existing, incoming) {
               return incoming;
             },
           },
-          bm020AuctionItemModels: {
+          bm021AuctionItemModels: {
             merge(existing, incoming) {
               return incoming;
             },
           },
-          bm020BidModels: {
+          bm021BidModels: {
             merge(existing, incoming) {
               return incoming;
             },

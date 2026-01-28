@@ -57,7 +57,7 @@ const AUCTIONS_QUERY = `
           entity {
             keys
             models {
-              ... on bm_0_2_0_Auction {
+              ... on bm_0_2_1_Auction {
                 auction_id
                 name
                 starting_price

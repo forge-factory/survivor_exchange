@@ -40,7 +40,7 @@ async function fetchAuctionData(
 
   const query = `
     query GetAuction {
-      bm020AuctionModels(where: { auction_id: ${auctionIdInt} }, limit: 1) {
+      bm021AuctionModels(where: { auction_id: ${auctionIdInt} }, limit: 1) {
         edges {
           node {
             auction_id
@@ -55,7 +55,7 @@ async function fetchAuctionData(
           }
         }
       }
-      bm020AuctionItemModels(where: { auction_id: ${auctionIdInt} }, limit: 10) {
+      bm021AuctionItemModels(where: { auction_id: ${auctionIdInt} }, limit: 10) {
         edges {
           node {
             token_id
@@ -74,9 +74,9 @@ async function fetchAuctionData(
 
   const data = await response.json();
 
-  const auction = data?.data?.bm020AuctionModels?.edges?.[0]?.node || null;
+  const auction = data?.data?.bm021AuctionModels?.edges?.[0]?.node || null;
   const items =
-    data?.data?.bm020AuctionItemModels?.edges?.map(
+    data?.data?.bm021AuctionItemModels?.edges?.map(
       (e: { node: AuctionItem }) => e.node,
     ) || [];
 

@@ -21,7 +21,7 @@ async function fetchAuctionData(
 
   const query = `
     query GetAuction {
-      bm020AuctionModels(where: { auction_id: ${auctionIdInt} }, limit: 1) {
+      bm021AuctionModels(where: { auction_id: ${auctionIdInt} }, limit: 1) {
         edges {
           node {
             auction_id
@@ -45,7 +45,7 @@ async function fetchAuctionData(
     });
 
     const data = await response.json();
-    return data?.data?.bm020AuctionModels?.edges?.[0]?.node || null;
+    return data?.data?.bm021AuctionModels?.edges?.[0]?.node || null;
   } catch {
     return null;
   }
