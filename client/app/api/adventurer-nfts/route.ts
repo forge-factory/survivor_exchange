@@ -14,8 +14,8 @@ export async function GET(request: NextRequest) {
   try {
     const normalizedAddress = address.toLowerCase();
 
-    // Fetch token balances (limit to 200 for performance, can be paginated later)
-    const balancesQuery = `SELECT token_id, contract_address FROM token_balances WHERE LOWER(account_address) = '${normalizedAddress}' AND contract_address = '${ADVENTURER_CONTRACT}' LIMIT 200`;
+    // Fetch token balances (limit to 2500 to support users with many adventurers)
+    const balancesQuery = `SELECT token_id, contract_address FROM token_balances WHERE LOWER(account_address) = '${normalizedAddress}' AND contract_address = '${ADVENTURER_CONTRACT}' LIMIT 2500`;
 
     const balancesResponse = await fetch(
       `${TORII_SQL_ENDPOINT}?query=${encodeURIComponent(balancesQuery)}`
