@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import type { FormattedNFT } from "../../lib/types";
 import { CustomDropdown, InfoTooltip, CountdownTimer, type DropdownOption } from "../ui";
-import { formatUSDSmart } from "../../lib/utils";
+import { formatUSDSmart, getAdventurerImageUrl } from "../../lib/utils";
 import { copyAuctionLink } from "../../lib/utils/share-utils";
 
 /** Auction bid data for displaying price info */
@@ -62,21 +62,13 @@ interface MetadataAttribute {
   value: string | number;
 }
 
-/** Full metadata from API */
-interface AdventurerMetadata {
-  image: string;
-  name: string;
-  description: string;
-}
-
-/** Combined adventurer data from multiple API sources */
-interface AdventurerData {
-  metadata: AdventurerMetadata | null;
+/** Adventurer attributes data from Torii SQL */
+interface AdventurerAttributes {
   attributes: MetadataAttribute[];
 }
 
-// Client-side cache for fetched data
-const dataCache = new Map<string, AdventurerData>();
+// Client-side cache for fetched attributes
+const attributesCache = new Map<string, MetadataAttribute[]>();
 
 export default function AdventurerDetailModal({
   isOpen,
@@ -97,8 +89,8 @@ export default function AdventurerDetailModal({
   onOpenWallet,
 }: AdventurerDetailModalProps) {
   const currentNft = nfts[currentIndex];
-  const [adventurerData, setAdventurerData] = useState<AdventurerData | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [attributes, setAttributes] = useState<MetadataAttribute[]>([]);
+  const [imageError, setImageError] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
 
   // Parse token ID
@@ -106,69 +98,50 @@ export default function AdventurerDetailModal({
     ? parseInt(currentNft.tokenId, 16)
     : parseInt(currentNft?.tokenId || "0", 10);
 
-  // Fetch metadata and attributes when modal opens or NFT changes
+  // Generate static image URL directly - no API call needed
+  const imageSrc = currentNft ? getAdventurerImageUrl(tokenIdNum) : '';
+
+  // Reset image error when NFT changes
+  useEffect(() => {
+    setImageError(false);
+  }, [currentNft?.tokenId]);
+
+  // Fetch attributes when modal opens or NFT changes (image is loaded directly via URL)
   useEffect(() => {
     if (!isOpen || !currentNft) {
-      setAdventurerData(null);
+      setAttributes([]);
       return;
     }
 
-    const cached = dataCache.get(currentNft.tokenId);
+    const cached = attributesCache.get(currentNft.tokenId);
     if (cached) {
-      setAdventurerData(cached);
+      setAttributes(cached);
       return;
     }
 
-    const fetchData = async () => {
-      setLoading(true);
+    const fetchAttributes = async () => {
       try {
-        // Fetch both metadata (image) and attributes (Level, XP) in parallel
-        const [metadataResponse, attributesResponse] = await Promise.all([
-          fetch(`/api/adventurer-image/${tokenIdNum}`),
-          fetch(`/api/adventurer-attributes/${tokenIdNum}`),
-        ]);
-
-        let metadata: AdventurerMetadata | null = null;
-        let attributes: MetadataAttribute[] = [];
-
-        // Parse metadata response
-        if (metadataResponse.ok) {
-          const metaData = await metadataResponse.json();
-          if (metaData.metadata) {
-            metadata = {
-              image: metaData.metadata.image || "",
-              name: metaData.metadata.name || `Adventurer #${tokenIdNum}`,
-              description: metaData.metadata.description || "",
-            };
+        const response = await fetch(`/api/adventurer-attributes/${tokenIdNum}`);
+        if (response.ok) {
+          const data = await response.json();
+          if (data.attributes && Array.isArray(data.attributes)) {
+            attributesCache.set(currentNft.tokenId, data.attributes);
+            setAttributes(data.attributes);
           }
         }
-
-        // Parse attributes response (from Torii SQL - has Level, XP, etc.)
-        if (attributesResponse.ok) {
-          const attrData = await attributesResponse.json();
-          if (attrData.attributes && Array.isArray(attrData.attributes)) {
-            attributes = attrData.attributes;
-          }
-        }
-
-        const data: AdventurerData = { metadata, attributes };
-        dataCache.set(currentNft.tokenId, data);
-        setAdventurerData(data);
       } catch (error) {
-        console.error("Failed to fetch adventurer data:", error);
-      } finally {
-        setLoading(false);
+        console.error("Failed to fetch adventurer attributes:", error);
       }
     };
 
-    fetchData();
+    fetchAttributes();
   }, [isOpen, currentNft, tokenIdNum]);
 
   // Helper to get attribute from fetched data or NFT
   const getAttribute = (traitType: string): string | undefined => {
     // First try attributes from Torii SQL (most reliable source)
-    if (adventurerData?.attributes) {
-      const attr = adventurerData.attributes.find((a) => a.trait_type === traitType);
+    if (attributes.length > 0) {
+      const attr = attributes.find((a) => a.trait_type === traitType);
       if (attr) return String(attr.value);
     }
     // Fall back to NFT attributes passed from parent
@@ -176,7 +149,7 @@ export default function AdventurerDetailModal({
     return nftAttr ? String(nftAttr.value) : undefined;
   };
 
-  const playerName = getAttribute("Player Name") || adventurerData?.metadata?.name || currentNft?.metadataName || "Unknown";
+  const playerName = getAttribute("Player Name") || currentNft?.metadataName || "Unknown";
   const xp = getAttribute("XP") || getAttribute("Score") || "0";
   const level = getAttribute("Level") || "0";
   const gameName = getAttribute("Game Name") || "Death Mountain";
@@ -329,17 +302,16 @@ export default function AdventurerDetailModal({
           {/* Left column - Image and basic info */}
           <div className="flex flex-col items-center gap-4">
             {/* Image - Large and centered */}
-            <div className="relative w-64 h-64 rounded-xl border-2 border-[rgb(50,255,52)]/40 bg-[rgb(50,255,52)]/5 overflow-hidden flex items-center justify-center">
-              {loading ? (
-                <div className="animate-pulse w-24 h-24 rounded-full bg-[rgb(50,255,52)]/10" />
-              ) : adventurerData?.metadata?.image ? (
+            <div className="relative w-64 h-64 rounded-xl overflow-hidden flex items-center justify-center">
+              {imageSrc && !imageError ? (
                 <Image
-                  src={adventurerData.metadata.image}
+                  src={imageSrc}
                   alt={playerName}
                   width={256}
                   height={256}
                   className="w-full h-full object-contain"
                   unoptimized
+                  onError={() => setImageError(true)}
                 />
               ) : (
                 <svg

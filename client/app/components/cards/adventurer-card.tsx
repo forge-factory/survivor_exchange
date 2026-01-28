@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import type { FormattedNFT } from "../../lib/types";
+import { getAdventurerImageUrl } from "../../lib/utils";
 
 type AdventurerCardProps = {
   nft: FormattedNFT;
@@ -11,17 +12,13 @@ type AdventurerCardProps = {
   onInfoClick?: () => void;
 };
 
-// Client-side cache for fetched images
-const imageCache = new Map<string, string>();
-
 export default function AdventurerCard({
   nft,
   selected,
   onToggle,
   onInfoClick,
 }: AdventurerCardProps) {
-  const [imageSrc, setImageSrc] = useState<string | null>(null);
-  const [imageLoading, setImageLoading] = useState(false);
+  const [imageError, setImageError] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const cardRef = useRef<HTMLElement>(null);
 
@@ -41,6 +38,9 @@ export default function AdventurerCard({
     ? parseInt(nft.tokenId, 16)
     : parseInt(nft.tokenId, 10);
   const tokenIdDisplay = `#${tokenIdNum}`;
+
+  // Generate static image URL directly - no API call needed
+  const imageSrc = getAdventurerImageUrl(tokenIdNum);
 
   // Intersection Observer for lazy loading
   useEffect(() => {
@@ -62,39 +62,6 @@ export default function AdventurerCard({
 
     return () => observer.disconnect();
   }, []);
-
-  // Fetch image from API only when visible
-  useEffect(() => {
-    if (!isVisible) return;
-
-    const fetchImage = async () => {
-      // Check client-side cache first
-      const cached = imageCache.get(nft.tokenId);
-      if (cached) {
-        setImageSrc(cached);
-        return;
-      }
-
-      setImageLoading(true);
-      try {
-        const response = await fetch(`/api/adventurer-image/${tokenIdNum}`);
-        if (response.ok) {
-          const data = await response.json();
-          const image = data.metadata?.image;
-          if (image) {
-            imageCache.set(nft.tokenId, image);
-            setImageSrc(image);
-          }
-        }
-      } catch (error) {
-        console.error("Failed to fetch adventurer image:", error);
-      } finally {
-        setImageLoading(false);
-      }
-    };
-
-    fetchImage();
-  }, [isVisible, nft.tokenId, tokenIdNum]);
 
   return (
     <article
@@ -163,10 +130,8 @@ export default function AdventurerCard({
       {/* Main content: Image + Name + XP */}
       <div className="flex flex-col items-center gap-2 text-white flex-1">
         {/* Image container */}
-        <div className="relative flex h-24 w-24 flex-shrink-0 items-center justify-center bg-[rgb(50,255,52)]/5 rounded-lg overflow-hidden">
-          {imageLoading ? (
-            <div className="animate-pulse w-12 h-12 rounded-full bg-[rgb(50,255,52)]/10" />
-          ) : imageSrc ? (
+        <div className="relative flex h-24 w-24 flex-shrink-0 items-center justify-center rounded-lg overflow-hidden">
+          {isVisible && !imageError ? (
             <Image
               src={imageSrc}
               alt={playerName}
@@ -175,6 +140,7 @@ export default function AdventurerCard({
               draggable={false}
               className="h-full w-full object-contain"
               unoptimized
+              onError={() => setImageError(true)}
             />
           ) : (
             <svg

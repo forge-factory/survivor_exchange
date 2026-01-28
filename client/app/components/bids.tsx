@@ -812,7 +812,7 @@ const toast = useToast();
     return () => {
       cancelled = true;
     };
-  }, [address, provider]);
+  }, [address]); // provider is stable after mount, don't include wrapper object
 
   // Countdown timer effect
   useEffect(() => {
@@ -2000,7 +2000,7 @@ const toast = useToast();
                             setSelectedAdventurerIndex(0);
                             setIsAdventurerModalOpen(true);
                           }}
-                          className="flex h-28 w-28 items-center justify-center rounded-2xl border border-[rgb(50,255,52)]/35 bg-[rgb(50,255,52)]/10 overflow-hidden cursor-pointer transition-all hover:scale-105 hover:ring-2 hover:ring-[rgb(50,255,52)]/60"
+                          className="flex h-28 w-28 items-center justify-center rounded-2xl overflow-hidden cursor-pointer transition-all hover:scale-105 hover:ring-2 hover:ring-[rgb(50,255,52)]/60"
                         >
                           <img
                             src={adventurerDetailImage}
@@ -2012,7 +2012,7 @@ const toast = useToast();
                       );
                     }
                     return (
-                      <div className="flex h-28 w-28 items-center justify-center rounded-2xl border border-[rgb(50,255,52)]/35 bg-[rgb(50,255,52)]/10">
+                      <div className="flex h-28 w-28 items-center justify-center rounded-2xl overflow-hidden">
                         <Image
                           src="/logo.png"
                           alt={selectedCollection.name}

@@ -170,7 +170,7 @@ export default function AdventurerCollectionCard({
 
             <div className="flex flex-col items-center gap-4 text-center">
                 {/* Image */}
-                <div className="h-24 w-24 rounded-2xl border border-[rgb(50,255,52)]/40 bg-[rgb(50,255,52)]/5 overflow-hidden flex items-center justify-center">
+                <div className="h-24 w-24 rounded-2xl overflow-hidden flex items-center justify-center">
                     {adventurerImage ? (
                         <img
                             src={adventurerImage}
