@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import type { FormattedNFT } from "../../lib/types";
 import { CustomDropdown, InfoTooltip, CountdownTimer, type DropdownOption } from "../ui";
@@ -213,6 +213,38 @@ export default function AdventurerDetailModal({
     if (currentIndex < nfts.length - 1) onNavigate(currentIndex + 1);
   }, [currentIndex, nfts.length, onNavigate]);
 
+  // Mobile swipe gesture support
+  const touchStartX = useRef<number | null>(null);
+  const touchStartY = useRef<number | null>(null);
+  const minSwipeDistance = 50;
+
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStartX.current = e.touches[0].clientX;
+    touchStartY.current = e.touches[0].clientY;
+  }, []);
+
+  const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+    if (touchStartX.current === null || touchStartY.current === null) return;
+
+    const touchEndX = e.changedTouches[0].clientX;
+    const touchEndY = e.changedTouches[0].clientY;
+
+    const deltaX = touchEndX - touchStartX.current;
+    const deltaY = touchEndY - touchStartY.current;
+
+    // Only trigger swipe if horizontal movement is greater than vertical
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > minSwipeDistance) {
+      if (deltaX > 0) {
+        handlePrev();
+      } else {
+        handleNext();
+      }
+    }
+
+    touchStartX.current = null;
+    touchStartY.current = null;
+  }, [handlePrev, handleNext]);
+
   if (!isOpen || !currentNft) return null;
 
   // Check if we're in an active auction context
@@ -228,35 +260,63 @@ export default function AdventurerDetailModal({
           isActiveAuction ? "max-w-2xl" : "max-w-lg"
         }`}
         onClick={(e) => e.stopPropagation()}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        style={{ WebkitOverflowScrolling: 'touch' }}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-[rgb(50,255,52)]/30">
-          <h2 className="text-lg font-orbitron uppercase tracking-wider text-white">
-            Adventurer
-          </h2>
-          <div className="flex items-center gap-3">
-            {/* Navigation */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between px-4 md:px-6 py-3 md:py-4 border-b border-[rgb(50,255,52)]/30 gap-2 md:gap-0">
+          {/* Title row - with close button on mobile */}
+          <div className="flex items-center justify-between md:justify-start">
+            <h2 className="text-base md:text-xl font-orbitron uppercase tracking-wider text-white">
+              Adventurer
+            </h2>
+            {/* Close button - mobile only position */}
+            <button
+              onClick={onClose}
+              className="md:hidden w-8 h-8 flex items-center justify-center rounded-lg border border-[rgb(50,255,52)]/40 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/20 transition-all"
+            >
+              <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
+                <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </div>
+
+          {/* Navigation controls */}
+          <div className="flex items-center justify-center md:justify-end gap-2 md:gap-4">
+            {/* Navigation - only show when more than 1 item */}
             {nfts.length > 1 && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 md:gap-3">
+                {/* Prev button */}
                 <button
                   onClick={handlePrev}
                   disabled={currentIndex === 0}
-                  className="w-8 h-8 flex items-center justify-center rounded-full border border-[rgb(50,255,52)]/60 bg-[rgb(50,255,52)]/10 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                  title="Previous adventurer (← arrow key)"
+                  className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full border-2 border-[rgb(50,255,52)]/60 bg-[rgb(50,255,52)]/10 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/30 hover:border-[rgb(50,255,52)] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                 >
-                  <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none">
-                    <path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <svg className="w-4 h-4 md:w-5 md:h-5" viewBox="0 0 20 20" fill="none">
+                    <path d="M12.5 15L7.5 10L12.5 5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </button>
-                <span className="text-xs text-white font-orbitron bg-[rgb(50,255,52)]/10 px-2 py-1 rounded-full border border-[rgb(50,255,52)]/30">
-                  {currentIndex + 1} / {nfts.length}
-                </span>
+                {/* Counter with swipe hint on mobile */}
+                <div className="flex flex-col items-center">
+                  <span className="text-xs md:text-sm text-white font-orbitron bg-[rgb(50,255,52)]/10 px-2 md:px-3 py-1 rounded-full border border-[rgb(50,255,52)]/30 whitespace-nowrap">
+                    {currentIndex + 1} OF {nfts.length}
+                  </span>
+                  {/* Mobile swipe hint */}
+                  <span className="text-[8px] text-[rgb(186,255,188)]/40 font-orbitron uppercase tracking-wider md:hidden mt-0.5">
+                    Swipe to navigate
+                  </span>
+                </div>
+                {/* Next button */}
                 <button
                   onClick={handleNext}
                   disabled={currentIndex === nfts.length - 1}
-                  className="w-8 h-8 flex items-center justify-center rounded-full border border-[rgb(50,255,52)]/60 bg-[rgb(50,255,52)]/10 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/30 disabled:opacity-30 disabled:cursor-not-allowed transition-all"
+                  title="Next adventurer (→ arrow key)"
+                  className="w-8 h-8 md:w-10 md:h-10 flex items-center justify-center rounded-full border-2 border-[rgb(50,255,52)]/60 bg-[rgb(50,255,52)]/10 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/30 hover:border-[rgb(50,255,52)] disabled:opacity-30 disabled:cursor-not-allowed transition-all"
                 >
-                  <svg className="w-4 h-4" viewBox="0 0 20 20" fill="none">
-                    <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  <svg className="w-4 h-4 md:w-5 md:h-5" viewBox="0 0 20 20" fill="none">
+                    <path d="M7.5 15L12.5 10L7.5 5" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
                   </svg>
                 </button>
               </div>
@@ -285,10 +345,10 @@ export default function AdventurerDetailModal({
                 )}
               </button>
             )}
-            {/* Close button */}
+            {/* Close button - desktop only position */}
             <button
               onClick={onClose}
-              className="w-8 h-8 flex items-center justify-center rounded-lg border border-[rgb(50,255,52)]/40 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/20 transition-all"
+              className="hidden md:flex w-8 h-8 items-center justify-center rounded-lg border border-[rgb(50,255,52)]/40 text-[rgb(50,255,52)] hover:bg-[rgb(50,255,52)]/20 transition-all"
             >
               <svg width="16" height="16" viewBox="0 0 20 20" fill="none">
                 <path d="M15 5L5 15M5 5L15 15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
