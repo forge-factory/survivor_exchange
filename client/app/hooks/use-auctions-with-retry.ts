@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useQuery } from "@apollo/client";
+import { useQuery } from "@apollo/client/react";
 import { AUCTIONS_QUERY } from "../lib/queries/auctions";
 import type { AuctionsResponse, AuctionWithNFTs } from "../lib/types";
 import { useToast } from "../providers/toast-provider";
