@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { clsx } from "../lib/utils";
 import Auction from "./auction";
-import Bids from "./bids";
+import Bids from "./bids-refactored";
 import MyListings from "./my-listings";
 import type { FormattedNFT, AuctionItem } from "../lib/types";
 import { type AuctionWithNFTs, type FormattedListing } from "../hooks";
