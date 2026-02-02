@@ -49,6 +49,12 @@ export const DEFAULT_COLLECTION: CollectionType = "beasts";
 
 export const DEFAULT_PAGE_SIZE = 12;
 
+/** Grid page size: only this many NFT cards render at once. Stat bounds are computed from this grid; filters apply to full list. */
+export const GRID_PAGE_SIZE = 50;
+
+/** Max token IDs sent to adventurer-stat-bounds API (matches grid page; bounds are computed from current grid only). */
+export const STAT_BOUNDS_MAX_TOKENS = 50;
+
 // Maximum NFTs that can be selected for auction (contract limit)
 // TODO: Increase to 200 when contract is upgraded
 export const MAX_AUCTION_NFT_SELECTION = 163;
@@ -121,7 +127,7 @@ export const SUPPORTED_TOKENS: TokenInfo[] = [
     address: LORDS_ADDRESS,
     symbol: "LORDS",
     name: "Lords",
-    decimals: 18,
+    decimals: 6, // contract uses 6 decimals for Lords amounts
   },
   {
     address: SURVIVOR_ADDRESS_MAINNET,

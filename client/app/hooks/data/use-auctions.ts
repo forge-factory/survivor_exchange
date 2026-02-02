@@ -16,11 +16,7 @@ import {
   normalizeTokenId,
   normalizeContractAddress,
 } from "../../lib/utils/normalization";
-import {
-  DEFAULT_PAGE_SIZE,
-  DEFAULT_POLL_INTERVAL,
-  BEASTS_NFT_CONTRACT_ADDRESS,
-} from "../../lib/constants";
+import { DEFAULT_PAGE_SIZE } from "../../lib/constants";
 
 export interface AuctionWithNFTs extends Auction {
   nfts: FormattedNFT[];
@@ -42,9 +38,8 @@ export function useAuctions() {
   const isFetchingNFTs = useRef(false);
   const apolloClient = useApolloClient();
 
-  const { data, loading, error } = useQuery<AuctionsResponse>(AUCTIONS_QUERY, {
-    pollInterval: DEFAULT_POLL_INTERVAL,
-    fetchPolicy: "cache-and-network",
+  const { data, loading, error, refetch } = useQuery<AuctionsResponse>(AUCTIONS_QUERY, {
+    fetchPolicy: "cache-first",
     errorPolicy: "all",
     notifyOnNetworkStatusChange: false,
   });
@@ -164,12 +159,9 @@ export function useAuctions() {
     };
   }, [itemsByAuction]);
 
-  // Fetch NFTs for a single seller - uses module-level cache, only fetches once per seller
+  // Fetch all NFTs for a single seller (beasts + adventurers) - cache per seller, used for both collections
   const fetchSellerNFTs = useCallback(
-    async (
-      seller: string,
-      targetContractNormalized: string,
-    ): Promise<FormattedNFT[]> => {
+    async (seller: string): Promise<FormattedNFT[]> => {
       const cached = sellerNFTCache.get(seller);
       if (cached) return cached;
 
@@ -184,16 +176,14 @@ export function useAuctions() {
       ).flatMap((edge) => {
         const metadata = edge.node.tokenMetadata;
         if (!metadata || !("tokenId" in metadata)) return [];
-        const normalized: ERC721Token = {
-          ...metadata,
-          contractAddress: metadata.contractAddress
-            ? normalizeContractAddress(metadata.contractAddress)
-            : metadata.contractAddress,
-        };
-        const nftContract = normalizeContractAddress(
-          normalized.contractAddress,
-        ).toLowerCase();
-        return nftContract === targetContractNormalized ? [normalized] : [];
+        return [
+          {
+            ...metadata,
+            contractAddress: metadata.contractAddress
+              ? normalizeContractAddress(metadata.contractAddress)
+              : metadata.contractAddress,
+          },
+        ];
       });
 
       const formattedNFTs = formatNFTs(rawNFTs);
@@ -223,10 +213,6 @@ export function useAuctions() {
         setIsProcessingNFTs(true);
       }
 
-      const targetContractNormalized = normalizeContractAddress(
-        BEASTS_NFT_CONTRACT_ADDRESS,
-      ).toLowerCase();
-
       // Group auctions by seller
       const auctionsBySeller = new Map<string, Auction[]>();
       for (const auction of allAuctions) {
@@ -241,13 +227,10 @@ export function useAuctions() {
       const auctionsWithNFTsData: AuctionWithNFTs[] = [];
 
       for (const [seller, sellerAuctions] of auctionsBySeller) {
-        let formattedNFTs: FormattedNFT[] = [];
+        let allSellerNFTs: FormattedNFT[] = [];
 
         try {
-          formattedNFTs = await fetchSellerNFTs(
-            seller,
-            targetContractNormalized,
-          );
+          allSellerNFTs = await fetchSellerNFTs(seller);
         } catch {
           // On error, use empty NFTs array - don't block auction display
         }
@@ -255,7 +238,18 @@ export function useAuctions() {
         for (const auction of sellerAuctions) {
           const auctionIdStr = String(auction.auction_id);
           const items = itemsByAuction.get(auctionIdStr) || [];
-          const matchedNFTs = formattedNFTs.filter((nft) =>
+          // Match by contract (beasts vs adventurers) and token_id
+          const itemContract =
+            items.length > 0 && items[0].contract_address
+              ? normalizeContractAddress(items[0].contract_address).toLowerCase()
+              : "";
+          const nftsForContract = itemContract
+            ? allSellerNFTs.filter(
+                (nft) =>
+                  normalizeContractAddress(nft.contractAddress || "").toLowerCase() === itemContract,
+              )
+            : allSellerNFTs;
+          const matchedNFTs = nftsForContract.filter((nft) =>
             items.some(
               (item) => nft.tokenId === normalizeTokenId(item.token_id),
             ),
@@ -321,5 +315,6 @@ export function useAuctions() {
     totalPages,
     setCurrentPage,
     getAuctionItems,
+    refetch,
   };
 }

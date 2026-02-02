@@ -109,6 +109,9 @@ export interface Collection {
   sellerFull: string;
   highestBidderFull: string;
   executedAt?: string;
+  /** Token the reserve is denominated in (e.g. USDC, STRK) */
+  reserveTokenSymbol?: string;
+  reserveTokenAddress?: string;
 }
 
 /**

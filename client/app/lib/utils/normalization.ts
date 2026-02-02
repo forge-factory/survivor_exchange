@@ -1,3 +1,22 @@
+/**
+ * Canonical decimal string for a token ID. Use for consistent storage/lookup (e.g. attributes by tokenId).
+ * Handles number, short hex, long 0x-padded hex; uses BigInt so large IDs don't lose precision.
+ */
+export function toDecimalTokenId(tokenId: string | number | null | undefined): string {
+  if (tokenId === null || tokenId === undefined) return '';
+  if (typeof tokenId === 'number') return String(tokenId);
+  const s = String(tokenId).trim();
+  if (!s) return '';
+  if (s.length >= 2 && (s[0] === '0' && (s[1] === 'x' || s[1] === 'X'))) {
+    try {
+      return BigInt(s).toString(10);
+    } catch {
+      return s;
+    }
+  }
+  return s;
+}
+
 export function normalizeTokenId(tokenId: string | number | null | undefined): string {
   if (tokenId === null || tokenId === undefined) return '';
   
