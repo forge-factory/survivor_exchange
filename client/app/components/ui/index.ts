@@ -5,4 +5,5 @@ export { default as InfoTooltip } from './info-tooltip';
 export { default as Pagination } from './pagination';
 export { default as BidPriceChart } from './bid-price-chart';
 export { default as CollectionSelector } from './collection-selector';
-export { ErrorBoundary, CompactErrorFallback, LoadingState } from './error-boundary';
+export { ErrorBoundary, CompactErrorFallback, LoadingState as LoadingStateBasic } from './error-boundary';
+export { LoadingState, ErrorState, TransactionState } from './LoadingState';

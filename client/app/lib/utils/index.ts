@@ -5,4 +5,6 @@ export * from './normalization';
 export * from './nft-formatters';
 export * from './parsing';
 export * from './auction-status';
+export * from './error-handling';
+export * from './graphql-error-handler';
 
