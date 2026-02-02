@@ -37,6 +37,7 @@
     "baseline-browser-mapping": "^2.8.32",
     "eslint": "^9",
     "eslint-config-next": "16.0.7",
+    "playwright": "^1.58.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
