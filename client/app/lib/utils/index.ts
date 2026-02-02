@@ -7,4 +7,5 @@ export * from './parsing';
 export * from './auction-status';
 export * from './error-handling';
 export * from './graphql-error-handler';
+export * from './validation';
 
