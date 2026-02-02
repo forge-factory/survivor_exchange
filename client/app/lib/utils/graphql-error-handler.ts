@@ -3,7 +3,7 @@
  * Handles Torii/GraphQL endpoint failures gracefully
  */
 
-import { ApolloError, ServerError, ServerParseError } from "@apollo/client";
+// ApolloError types - using any for compatibility since Apollo exports vary by version
 import { withRetry, ErrorMessages, parseErrorMessage } from "./error-handling";
 
 export interface GraphQLErrorInfo {
@@ -18,16 +18,17 @@ export interface GraphQLErrorInfo {
  * Parse Apollo GraphQL errors into structured info
  */
 export function parseGraphQLError(error: unknown): GraphQLErrorInfo {
-  // Handle ApolloError
-  if (error instanceof ApolloError) {
+  // Handle ApolloError-like objects
+  if (error && typeof error === "object") {
+    const apolloError = error as any;
+    
     // Network error
-    if (error.networkError) {
-      const networkError = error.networkError;
+    if (apolloError.networkError) {
+      const networkError = apolloError.networkError;
       
       // ServerError (HTTP status code)
       if ("statusCode" in networkError) {
-        const serverError = networkError as ServerError;
-        const statusCode = serverError.statusCode;
+        const statusCode = networkError.statusCode;
         
         return {
           message: ErrorMessages.GRAPHQL_CONNECTION_ERROR,
@@ -55,8 +56,8 @@ export function parseGraphQLError(error: unknown): GraphQLErrorInfo {
     }
     
     // GraphQL errors (from the server)
-    if (error.graphQLErrors?.length) {
-      const firstError = error.graphQLErrors[0];
+    if (apolloError.graphQLErrors?.length) {
+      const firstError = apolloError.graphQLErrors[0];
       const message = firstError.message || ErrorMessages.UNKNOWN_ERROR;
       const code = firstError.extensions?.code as string | undefined;
       
