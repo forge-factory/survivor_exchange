@@ -12,7 +12,7 @@ import { applyFiltersToNFTs } from "../lib/filter-utils";
 import { AUCTION_CONTRACT_ADDRESS, DEFAULT_PAGE_SIZE, DEFAULT_AUCTION_DURATION_MINUTES, SUPPORTED_TOKENS, USDC_ADDRESS, MAX_AUCTION_NFT_SELECTION, COLLECTIONS, CollectionType, DEFAULT_COLLECTION } from "../lib/constants";
 import { fetchTokens } from "@avnu/avnu-sdk";
 import { normalizeContractAddress } from "../lib/utils/normalization";
-import { useSummitLeaderboard, findMatchingSummitBeast, useMyNFTs, useMyAdventurerNFTs } from "../hooks";
+import { useSummitLeaderboard, findMatchingSummitBeast, useMyNFTs, useMyAdventurerNFTs, usePaymaster } from "../hooks";
 
 interface AuctionProps {
     nfts?: FormattedNFT[];
@@ -39,6 +39,7 @@ export default function Auction({ nfts: externalNfts, loading: externalLoading, 
     const { account, address } = useAccount();
     const explorer = useExplorer();
     const toast = useToast();
+    const { executeWithPaymaster } = usePaymaster();
     const [currentPage, setCurrentPage] = useState(1);
     const [selectedNFTIds, setSelectedNFTIds] = useState<string[]>([]);
     const [collectionName, setCollectionName] = useState<string>("");
@@ -310,7 +311,7 @@ export default function Auction({ nfts: externalNfts, loading: externalLoading, 
                 ]
             });
 
-            const response = await account.execute(calls);
+            const response = await executeWithPaymaster(account, calls);
 
             setTxnHash(response.transaction_hash);
             toast.success("Auction created", "Your NFTs have been listed for auction");
