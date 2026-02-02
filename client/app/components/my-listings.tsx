@@ -4,7 +4,7 @@ import { useAccount, useExplorer, useProvider } from "@starknet-react/core";
 import { useState, useCallback, useMemo, useEffect } from "react";
 import { MyListingsSkeleton } from "./skeletons";
 import { AddressDisplay } from "./ui";
-import { type FormattedListing, type FormattedOffer } from "../hooks";
+import { type FormattedListing, type FormattedOffer, usePaymaster } from "../hooks";
 import { useToast } from "../providers/toast-provider";
 import {
   AUCTION_CONTRACT_ADDRESS,
@@ -111,6 +111,7 @@ export default function MyListings({
   const explorer = useExplorer();
   const provider = useProvider();
   const toast = useToast();
+  const { executeWithPaymaster } = usePaymaster();
   const [isEndingAuction, setIsEndingAuction] = useState<string | null>(null);
   const [txnHashes, setTxnHashes] = useState<Record<string, string>>({});
   const [isSettling, setIsSettling] = useState<string | null>(null);
@@ -163,11 +164,11 @@ export default function MyListings({
       try {
         setIsEndingAuction(auctionId);
 
-        const response = await account.execute({
+        const response = await executeWithPaymaster(account, [{
           contractAddress: AUCTION_CONTRACT_ADDRESS,
           entrypoint: "end_auction",
           calldata: [auctionId],
-        });
+        }]);
 
         setTxnHashes((prev) => ({
           ...prev,
@@ -183,7 +184,7 @@ export default function MyListings({
         setIsEndingAuction(null);
       }
     },
-    [account, toast],
+    [account, toast, executeWithPaymaster],
   );
 
   const isAuctionExpired = (endTime: string, status: string): boolean => {
@@ -226,11 +227,11 @@ export default function MyListings({
         try {
           setIsSettling(auctionId);
 
-          const response = await account.execute({
+          const response = await executeWithPaymaster(account, [{
             contractAddress: AUCTION_CONTRACT_ADDRESS,
             entrypoint: "settle_auction",
             calldata: [auctionId],
-          });
+          }]);
 
           setSettleTxnHashes((prev) => ({
             ...prev,
@@ -386,7 +387,7 @@ export default function MyListings({
           });
         }
 
-        const response = await account.execute(calls);
+        const response = await executeWithPaymaster(account, calls);
         setSettleTxnHashes((prev) => ({
           ...prev,
           [auctionId]: response.transaction_hash,
@@ -420,7 +421,7 @@ export default function MyListings({
         setIsSettling(null);
       }
     },
-    [account, address, listings, provider, toast],
+    [account, address, listings, provider, toast, executeWithPaymaster],
   );
 
   const handleAcceptOffer = useCallback(
@@ -433,11 +434,11 @@ export default function MyListings({
       try {
         setIsAcceptingOffer(`${auctionId}-${buyerAddress}`);
 
-        const response = await account.execute({
+        const response = await executeWithPaymaster(account, [{
           contractAddress: AUCTION_CONTRACT_ADDRESS,
           entrypoint: "accept_offer",
           calldata: [auctionId, buyerAddress],
-        });
+        }]);
 
         setOfferTxnHashes((prev) => ({
           ...prev,
@@ -453,7 +454,7 @@ export default function MyListings({
         setIsAcceptingOffer(null);
       }
     },
-    [account, toast],
+    [account, toast, executeWithPaymaster],
   );
 
   const handleRejectOffer = useCallback(
@@ -466,11 +467,11 @@ export default function MyListings({
       try {
         setIsRejectingOffer(`${auctionId}-${buyerAddress}`);
 
-        const response = await account.execute({
+        const response = await executeWithPaymaster(account, [{
           contractAddress: AUCTION_CONTRACT_ADDRESS,
           entrypoint: "reject_offer",
           calldata: [auctionId, buyerAddress],
-        });
+        }]);
 
         setOfferTxnHashes((prev) => ({
           ...prev,
@@ -486,7 +487,7 @@ export default function MyListings({
         setIsRejectingOffer(null);
       }
     },
-    [account, toast],
+    [account, toast, executeWithPaymaster],
   );
 
   const toggleOffers = useCallback((auctionId: string) => {

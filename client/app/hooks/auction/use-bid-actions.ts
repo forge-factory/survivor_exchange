@@ -19,6 +19,7 @@ import {
   getTokenPriceInUSDC,
   shouldRefetchPrice,
 } from "../../lib/utils/token-price-cache";
+import { usePaymaster } from "../api/use-paymaster";
 import type { Collection } from "../../lib/types";
 import type { AuctionWithNFTs } from "../data/use-auctions";
 
@@ -74,6 +75,7 @@ export function useBidActions(
   const { account, address } = useAccount();
   const provider = useProvider();
   const toast = useToast();
+  const { executeWithPaymaster } = usePaymaster();
 
   const {
     selectedCollectionId,
@@ -343,7 +345,7 @@ export function useBidActions(
         });
       }
 
-      const response = await account.execute(calls);
+      const response = await executeWithPaymaster(account, calls);
       setTxnHash(response.transaction_hash);
       setLocalBidAmount("");
       toast.success("Bid placed", "Your bid has been submitted successfully");
@@ -373,6 +375,7 @@ export function useBidActions(
     buildSwapCalls,
     onTokenPriceUpdate,
     toast,
+    executeWithPaymaster,
   ]);
 
   const handleMakeOffer = useCallback(async () => {
@@ -496,7 +499,7 @@ export function useBidActions(
         });
       }
 
-      const response = await account.execute(calls);
+      const response = await executeWithPaymaster(account, calls);
       setOfferTxnHash(response.transaction_hash);
       setLocalBidAmount("");
       toast.success("Offer submitted", "Your offer has been sent to the seller");
@@ -525,6 +528,7 @@ export function useBidActions(
     buildSwapCalls,
     onTokenPriceUpdate,
     toast,
+    executeWithPaymaster,
   ]);
 
   const handleWithdrawOffer = useCallback(async () => {
@@ -546,7 +550,7 @@ export function useBidActions(
         },
       ];
 
-      const response = await account.execute(calls);
+      const response = await executeWithPaymaster(account, calls);
       setWithdrawOfferTxnHash(response.transaction_hash);
       toast.success("Offer withdrawn", "Your offer has been cancelled");
     } catch (error) {
@@ -556,7 +560,7 @@ export function useBidActions(
     } finally {
       setIsWithdrawingOffer(false);
     }
-  }, [account, selectedCollectionId, toast]);
+  }, [account, selectedCollectionId, toast, executeWithPaymaster]);
 
   const handleSettleAuction = useCallback(async () => {
     if (
@@ -594,11 +598,11 @@ export function useBidActions(
 
         const auctionId = parseInt(selectedCollectionId, 10);
 
-        const response = await account.execute({
+        const response = await executeWithPaymaster(account, [{
           contractAddress: AUCTION_CONTRACT_ADDRESS,
           entrypoint: "settle_auction",
           calldata: [auctionId.toString()],
-        });
+        }]);
 
         setSettleTxnHash(response.transaction_hash);
         toast.success("Auction settled", "NFTs have been returned");
@@ -717,7 +721,7 @@ export function useBidActions(
         });
       }
 
-      const response = await account.execute(calls);
+      const response = await executeWithPaymaster(account, calls);
       setSettleTxnHash(response.transaction_hash);
       toast.success("Auction settled", "Transaction submitted successfully");
 
@@ -750,6 +754,7 @@ export function useBidActions(
     paginatedFilteredAuctions,
     provider,
     toast,
+    executeWithPaymaster,
   ]);
 
   return {
